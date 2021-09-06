@@ -2,27 +2,18 @@ package xmppcore
 
 import "github.com/jackal-xmpp/stravaganza/v2"
 
-type BindFeature struct {
-	resolved bool
-}
+type BindFeature struct{}
 
 const (
 	nsBind = "urn:ietf:params:xml:ns:xmpp-bind"
 )
 
 func NewBindFeature() *BindFeature {
-	return &BindFeature{false}
+	return &BindFeature{}
 }
 
-func (bf *BindFeature) notifyPeer(sender GoingStream) error {
-	elem := stravaganza.NewBuilder("features").WithChild(
-		stravaganza.NewBuilder("bind").WithAttribute("xmlns", nsBind).Build(),
-	).Build()
-	return sender.SendElement(elem)
-}
-
-func (bf *BindFeature) Reopen() bool {
-	return true
+func (bf *BindFeature) Elem() stravaganza.Element {
+	return stravaganza.NewBuilder("bind").WithAttribute("xmlns", nsBind).Build()
 }
 
 func (bf *BindFeature) Match(elem stravaganza.Element) bool {
@@ -56,21 +47,4 @@ func (bf *BindFeature) Handle(elem stravaganza.Element, part Part) error {
 			).Build(),
 	).Build())
 	return err
-}
-
-func (bf *BindFeature) Resolve(part Part) error {
-	bf.notifyPeer(part.GoingStream())
-	var elem stravaganza.Element
-	if err := part.CommingStream().NextElement(&elem); err != nil {
-		return nil
-	}
-	if bf.Match(elem) {
-		bf.Handle(elem, part)
-	}
-	bf.resolved = true
-	return nil
-}
-
-func (bf *BindFeature) Resolved() bool {
-	return bf.resolved
 }

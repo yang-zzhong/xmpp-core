@@ -14,6 +14,10 @@ type Auth interface {
 	Auth(mechanism, authInfo string, part Part) (username string, err error)
 }
 
+type Authorized interface {
+	Authorized(username string, part Part)
+}
+
 func AuthPayload(encoded string, payload *string) error {
 	if len(encoded) == 0 {
 		return SaslFailureError(SFIncorrectEncoding, "")
@@ -107,14 +111,14 @@ const (
 )
 
 type SASLFeature struct {
-	resolved  bool
-	supported map[string]Auth
+	supported  map[string]Auth
+	authorized Authorized
 }
 
-func NewSASLFeature() *SASLFeature {
+func NewSASLFeature(authorized Authorized) *SASLFeature {
 	mf := new(SASLFeature)
-	mf.resolved = false
 	mf.supported = make(map[string]Auth)
+	mf.authorized = authorized
 	return mf
 }
 
@@ -122,17 +126,20 @@ func (mf *SASLFeature) notifySupported(s GoingStream) error {
 	if len(mf.supported) == 0 {
 		return nil
 	}
+	msg := stravaganza.NewBuilder("features").
+		WithChild(mf.Elem()).Build()
+
+	return s.SendElement(msg)
+}
+
+func (mf *SASLFeature) Elem() stravaganza.Element {
 	ms := []stravaganza.Element{}
 	for name := range mf.supported {
 		ms = append(ms, stravaganza.NewBuilder("mechanism").WithText(name).Build())
 	}
-	msg := stravaganza.NewBuilder("features").
-		WithChild(
-			stravaganza.NewBuilder("mechanisms").
-				WithAttribute("xmlns", nsSASL).
-				WithChildren(ms...).Build()).Build()
-
-	return s.SendElement(msg)
+	return stravaganza.NewBuilder("mechanisms").
+		WithAttribute("xmlns", nsSASL).
+		WithChildren(ms...).Build()
 }
 
 func (mf *SASLFeature) Support(name string, auth Auth) *SASLFeature {
@@ -145,13 +152,8 @@ func (mf *SASLFeature) Unsupport(name string) *SASLFeature {
 	return mf
 }
 
-func (mf *SASLFeature) Reopen() bool {
-	return true
-}
-
 func (mf *SASLFeature) Resolve(part Part) error {
 	if err := mf.notifySupported(part.GoingStream()); err != nil {
-		mf.resolved = true
 		return err
 	}
 	as, mech, err := mf.clientRequest(part)
@@ -174,11 +176,7 @@ func (mf *SASLFeature) Resolve(part Part) error {
 		return err
 	}
 	part.CommingStream().JID().Username = username
-
-	mf.resolved = true
-	/*
-	 @TODO create session and manage it
-	*/
+	mf.authorized.Authorized(username, part)
 	return nil
 }
 
@@ -208,8 +206,4 @@ func (mf *SASLFeature) nextElement(part Part) (stravaganza.Element, error) {
 		return nil, SaslFailureError(SFAborted, "")
 	}
 	return elem, nil
-}
-
-func (mf *SASLFeature) Resolved() bool {
-	return mf.resolved
 }

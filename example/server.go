@@ -100,6 +100,7 @@ func (s *Server) Stop() {
 var (
 	memoryAuthUserFetcher      *xmppcore.MemoryAuthUserFetcher
 	memoryPlainAuthUserFetcher *xmppcore.MemoryPlainAuthUserFetcher
+	memoryAuthorized           *xmppcore.MemoryAuthorized
 )
 
 func init() {
@@ -112,36 +113,49 @@ func init() {
 	}, 5))
 	memoryPlainAuthUserFetcher = xmppcore.NewMemoryPlainAuthUserFetcher()
 	memoryPlainAuthUserFetcher.Add(xmppcore.NewMemoryPlainAuthUser("test", string(md5.New().Sum([]byte("123456")))))
+	memoryAuthorized = xmppcore.NewMemoryAuthorized()
 }
 
 func (s *Server) onConn(conn xmppcore.Conn, connFor xmppcore.ConnFor, connType xmppcore.ConnType) {
-	c2s := xmppcore.NewC2S(conn, s.config.Domain, s.logger)
-
-	sasl := xmppcore.NewSASLFeature()
-	sasl.Support(xmppcore.SM_PLAIN, xmppcore.NewPlainAuth(memoryPlainAuthUserFetcher, md5.New))
-	if s.config.CertFile != "" && s.config.KeyFile != "" {
-		c2s.WithFeature(xmppcore.NewTlsFeature(s.config.CertFile, s.config.KeyFile))
-
-		sasl.Support(xmppcore.SM_SCRAM_SHA_1_PLUS, xmppcore.NewScramAuth(true, memoryAuthUserFetcher, sha1.New))
-		sasl.Support(xmppcore.SM_SCRAM_SHA_256_PLUS, xmppcore.NewScramAuth(true, memoryAuthUserFetcher, sha256.New))
-		sasl.Support(xmppcore.SM_SCRAM_SHA_512_PLUS, xmppcore.NewScramAuth(true, memoryAuthUserFetcher, sha512.New))
-	} else {
-		sasl.Support(xmppcore.SM_SCRAM_SHA_1, xmppcore.NewScramAuth(false, memoryAuthUserFetcher, sha1.New))
-		sasl.Support(xmppcore.SM_SCRAM_SHA_256, xmppcore.NewScramAuth(false, memoryAuthUserFetcher, sha256.New))
-		sasl.Support(xmppcore.SM_SCRAM_SHA_512, xmppcore.NewScramAuth(false, memoryAuthUserFetcher, sha512.New))
+	if connFor == xmppcore.ForC2S {
+		s.c2sHandler(conn)
+	} else if connFor == xmppcore.ForS2S {
+		s.s2sHandler(conn)
 	}
-	c2s.WithFeature(sasl)
-	c2s.WithFeature(xmppcore.NewBindFeature())
+}
 
-	comp := xmppcore.NewCompressFeature()
-	comp.Support("zlib", func(conn io.ReadWriter) xmppcore.Compressor {
+func (s *Server) c2sHandler(conn xmppcore.Conn) {
+	c2s := xmppcore.NewC2S(conn, s.config.Domain, s.logger)
+	c2s.WithSASLFeature(memoryAuthorized).
+		WithSASLSupport(xmppcore.SM_PLAIN, xmppcore.NewPlainAuth(memoryPlainAuthUserFetcher, md5.New))
+	if s.config.CertFile != "" && s.config.KeyFile != "" {
+		c2s.WithTLS(s.config.CertFile, s.config.KeyFile).
+			WithSASLSupport(xmppcore.SM_SCRAM_SHA_1_PLUS, xmppcore.NewScramAuth(true, memoryAuthUserFetcher, sha1.New)).
+			WithSASLSupport(xmppcore.SM_SCRAM_SHA_256_PLUS, xmppcore.NewScramAuth(true, memoryAuthUserFetcher, sha256.New)).
+			WithSASLSupport(xmppcore.SM_SCRAM_SHA_512_PLUS, xmppcore.NewScramAuth(true, memoryAuthUserFetcher, sha512.New))
+	} else {
+		c2s.WithSASLSupport(xmppcore.SM_SCRAM_SHA_1, xmppcore.NewScramAuth(false, memoryAuthUserFetcher, sha1.New)).
+			WithSASLSupport(xmppcore.SM_SCRAM_SHA_256, xmppcore.NewScramAuth(false, memoryAuthUserFetcher, sha256.New)).
+			WithSASLSupport(xmppcore.SM_SCRAM_SHA_512, xmppcore.NewScramAuth(false, memoryAuthUserFetcher, sha512.New))
+	}
+	c2s.WithBind().WithCompressSupport("zlib", func(conn io.ReadWriter) xmppcore.Compressor {
 		return xmppcore.NewCompZlib(conn)
 	})
-	c2s.WithFeature(comp)
-	c2s.WithMessageHandler(&xmppcore.EchoMessageHandler{})
-	c2s.WithMessageHandler(&xmppcore.MessageRouter{})
-	if err := c2s.Run(); err != nil {
+	c2s.WithElemHandler(&xmppcore.EchoMessageHandler{})
+	c2s.WithElemHandler(&xmppcore.MessageRouter{})
+	if err := c2s.Start(); err != nil {
 		s.logger.Printf(xmppcore.Error, err.Error())
 	}
+}
 
+func (s *Server) s2sHandler(conn xmppcore.Conn) {
+	s2s := xmppcore.NewS2S(conn, s.config.Domain, s.logger)
+	if s.config.CertFile != "" && s.config.KeyFile != "" {
+		s2s.WithTLS(s.config.CertFile, s.config.KeyFile)
+	}
+	s2s.WithSASLFeature(memoryAuthorized).
+		WithSASLSupport(xmppcore.SM_PLAIN, xmppcore.NewPlainAuth(memoryPlainAuthUserFetcher, md5.New))
+	if err := s2s.Start(); err != nil {
+		s.logger.Printf(xmppcore.Error, err.Error())
+	}
 }

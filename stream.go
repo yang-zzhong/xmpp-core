@@ -16,7 +16,6 @@ type StreamAttr interface {
 	JID() *JID
 	Version() string
 
-	SetJID(JID)
 	SetVersion(string)
 	SetID(string)
 }
@@ -29,7 +28,6 @@ type CommingStream interface {
 }
 
 type GoingStream interface {
-	StreamAttr
 	Open(commingStream CommingStream) error
 	Send([]byte) error
 	SendToken(xml.Token) error
@@ -185,26 +183,22 @@ func (xc *XCommingStream) WaitHeader(header *xml.StartElement) error {
 type XGoingStream struct {
 	conn    io.Writer
 	encoder *xml.Encoder
-	*XStreamAttr
 }
 
 func NewXGoingStream(conn io.Writer) *XGoingStream {
-	return &XGoingStream{conn, xml.NewEncoder(conn), NewXStreamAttr()}
+	return &XGoingStream{conn, xml.NewEncoder(conn)}
 }
 
 func (gs *XGoingStream) Open(commingStream CommingStream) error {
-	gs.SetID(commingStream.ID())
-	gs.SetVersion(commingStream.Version())
-
 	gs.Send([]byte("<?xml version='1.0'?>"))
 	attr := []xml.Attr{
-		{Name: xml.Name{Local: "version"}, Value: gs.Version()},
+		{Name: xml.Name{Local: "version"}, Value: commingStream.Version()},
 		{Name: xml.Name{Local: "xmlns"}, Value: nsStream},
-		{Name: xml.Name{Local: "from"}, Value: gs.JID().Domain},
-		{Name: xml.Name{Local: "id"}, Value: gs.ID()},
+		{Name: xml.Name{Local: "from"}, Value: commingStream.JID().Domain},
+		{Name: xml.Name{Local: "id"}, Value: commingStream.ID()},
 	}
-	if gs.JID().Username != "" {
-		attr = append(attr, xml.Attr{Name: xml.Name{Local: "to"}, Value: gs.JID().String()})
+	if commingStream.JID().Username != "" {
+		attr = append(attr, xml.Attr{Name: xml.Name{Local: "to"}, Value: commingStream.JID().String()})
 	}
 	return gs.SendToken(xml.StartElement{
 		Name: xml.Name{Space: nsStream, Local: "stream"},

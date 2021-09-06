@@ -118,3 +118,15 @@ func (uf *MemoryAuthUserFetcher) UserByUsername(username string) (ScramAuthUser,
 	}
 	return nil, errors.New("user not found")
 }
+
+type MemoryAuthorized struct {
+	parts map[string]Part
+}
+
+func NewMemoryAuthorized() *MemoryAuthorized {
+	return &MemoryAuthorized{parts: make(map[string]Part)}
+}
+
+func (ma *MemoryAuthorized) Authorized(username string, part Part) {
+	ma.parts[username] = part
+}

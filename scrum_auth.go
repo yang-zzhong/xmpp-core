@@ -25,7 +25,7 @@ type ScramAuthUser interface {
 	IterationCount() int
 }
 
-type ScramUserFetcher interface {
+type ScramAuthUserFetcher interface {
 	UserByUsername(username string) (ScramAuthUser, error)
 }
 
@@ -47,7 +47,7 @@ func (p *scramParam) string() string {
 
 type ScramAuth struct {
 	channelBinding bool
-	userFetcher    ScramUserFetcher
+	userFetcher    ScramAuthUserFetcher
 	hashBuilder    func() hash.Hash
 
 	param        *scramParam
@@ -56,7 +56,7 @@ type ScramAuth struct {
 	firstMessage string
 }
 
-func NewScramAuth(channelBinding bool, userFetcher ScramUserFetcher, hashBuilder func() hash.Hash) *ScramAuth {
+func NewScramAuth(channelBinding bool, userFetcher ScramAuthUserFetcher, hashBuilder func() hash.Hash) *ScramAuth {
 	return &ScramAuth{
 		channelBinding: channelBinding,
 		userFetcher:    userFetcher,

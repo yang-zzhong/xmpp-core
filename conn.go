@@ -14,7 +14,7 @@ var (
 
 type Conn interface {
 	net.Conn
-	StartTLS(*tls.Config) error
+	StartTLS(*tls.Config)
 	BindTlsUnique(io.Writer) error
 	StartCompress(BuildCompressor)
 }
@@ -84,11 +84,10 @@ func (conn *TcpConn) BindTlsUnique(w io.Writer) error {
 	return ErrBindTlsUniqueNotSupported
 }
 
-func (conn *TcpConn) StartTLS(conf *tls.Config) error {
+func (conn *TcpConn) StartTLS(conf *tls.Config) {
 	underlying := tls.Server(conn.underlying, conf)
 	conn.underlying = underlying
 	conn.isTls = true
-	return nil
 }
 
 func (conn *TcpConn) StartCompress(buildCompress BuildCompressor) {
