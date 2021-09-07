@@ -44,11 +44,6 @@ func (conn *TcpConn) Write(b []byte) (int, error) {
 }
 
 func (conn *TcpConn) Close() error {
-	if conn.comp != nil {
-		if err := conn.comp.Close(); err != nil {
-			return err
-		}
-	}
 	return conn.underlying.Close()
 }
 

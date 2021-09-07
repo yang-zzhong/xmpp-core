@@ -1,4 +1,4 @@
-package example
+package server
 
 import (
 	xmppcore "xmpp-core"
@@ -29,7 +29,7 @@ var DefaultConfig Config
 func init() {
 	DefaultConfig = Config{
 		WsConns: []WsConnConfig{
-			{ListenOn: ":8080", Path: "/ws", ReadBufSize: 1024, WriteBufSize: 1024},
+			{ListenOn: ":5280", Path: "/ws", ReadBufSize: 1024, WriteBufSize: 1024},
 		},
 		TcpConns: []TcpConnConfig{
 			{ListenOn: ":5222", For: xmppcore.ForC2S},

@@ -1,4 +1,4 @@
-package example
+package server
 
 import (
 	"crypto/md5"
@@ -23,7 +23,7 @@ type Server struct {
 	wg           sync.WaitGroup
 }
 
-func NewServer(conf *Config) *Server {
+func New(conf *Config) *Server {
 	return &Server{
 		config:       conf,
 		connGrabbers: []xmppcore.ConnGrabber{},

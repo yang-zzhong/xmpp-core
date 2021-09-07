@@ -1,7 +1,5 @@
 package xmppcore
 
-import ()
-
 type C2S struct {
 	tls      *TlsFeature
 	sasl     *SASLFeature
@@ -51,7 +49,7 @@ func (c2s *C2S) WithElemHandler(handler ElemHandler) *C2S {
 	return c2s
 }
 
-func (c2s *C2S) Start() error {
+func (c2s *C2S) HandleStandFeature() {
 	if c2s.tls != nil {
 		c2s.part.WithRequiredFeature(c2s.tls)
 	}
@@ -64,5 +62,9 @@ func (c2s *C2S) Start() error {
 	if c2s.compress != nil {
 		c2s.part.WithOptionalFeature(c2s.compress)
 	}
+}
+
+func (c2s *C2S) Start() error {
+	c2s.HandleStandFeature()
 	return c2s.part.Run()
 }

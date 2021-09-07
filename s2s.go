@@ -30,12 +30,16 @@ func (s2s *S2S) WithElemHandler(handler ElemHandler) *S2S {
 	return s2s
 }
 
-func (s2s *S2S) Start() error {
+func (s2s *S2S) HandleStandFeature() {
 	if s2s.tls != nil {
 		s2s.part.WithRequiredFeature(s2s.tls)
 	}
 	if s2s.sasl != nil {
 		s2s.part.WithRequiredFeature(s2s.sasl)
 	}
+}
+
+func (s2s *S2S) Start() error {
+	s2s.HandleStandFeature()
 	return s2s.part.Run()
 }
