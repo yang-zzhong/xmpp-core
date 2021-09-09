@@ -100,6 +100,7 @@ type PartAttr struct {
 	Domain  string
 	Version string
 	Xmlns   string
+	OpenTag bool
 }
 
 func (attr *PartAttr) ToClientHead(elem *xml.StartElement) {
@@ -129,13 +130,21 @@ func (attr *PartAttr) head(elem *xml.StartElement, from, to string) {
 	if to != "" {
 		eattr = append(eattr, xml.Attr{Name: xml.Name{Local: "to"}, Value: to})
 	}
+	if !attr.OpenTag {
+		*elem = xml.StartElement{
+			Name: xml.Name{Space: nsStream, Local: "stream"},
+			Attr: eattr}
+		return
+	}
 	*elem = xml.StartElement{
-		Name: xml.Name{Space: nsStream, Local: "stream"},
+		Name: xml.Name{Space: nsFraming, Local: "open"},
 		Attr: eattr}
 }
 
 func (sa *PartAttr) ParseToServer(elem xml.StartElement) error {
-	if elem.Name.Local != "stream" || elem.Name.Space != nsStream {
+	isStream := elem.Name.Local == "stream" && elem.Name.Space == nsStream
+	sa.OpenTag = elem.Name.Local == "open" && elem.Name.Space == nsFraming
+	if !isStream && !sa.OpenTag {
 		return ErrNotHeaderStart
 	}
 	for _, attr := range elem.Attr {
@@ -159,7 +168,9 @@ func (sa *PartAttr) ParseToServer(elem xml.StartElement) error {
 }
 
 func (sa *PartAttr) ParseToClient(elem xml.StartElement) error {
-	if elem.Name.Local != "stream" || elem.Name.Space != nsStream {
+	isStream := elem.Name.Local == "stream" && elem.Name.Space == nsStream
+	sa.OpenTag = elem.Name.Local == "open" && elem.Name.Space == nsFraming
+	if !isStream && !sa.OpenTag {
 		return ErrNotHeaderStart
 	}
 	for _, attr := range elem.Attr {

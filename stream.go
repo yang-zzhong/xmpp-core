@@ -13,6 +13,8 @@ import (
 var (
 	ErrNotHeaderStart       = errors.New("not a start header")
 	ErrNotForThisDomainHead = errors.New("not for this domain header")
+
+	nsFraming = "urn:ietf:params:xml:ns:xmpp-framing"
 )
 
 type CommingStream interface {
