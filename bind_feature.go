@@ -2,14 +2,20 @@ package xmppcore
 
 import "github.com/jackal-xmpp/stravaganza/v2"
 
-type BindFeature struct{}
+type BindFeature struct {
+	rsb ResourceBinder
+}
+
+type ResourceBinder interface {
+	BindResource(userdomain, resource string) error
+}
 
 const (
 	nsBind = "urn:ietf:params:xml:ns:xmpp-bind"
 )
 
-func NewBindFeature() *BindFeature {
-	return &BindFeature{}
+func NewBindFeature(rsb ResourceBinder) *BindFeature {
+	return &BindFeature{rsb: rsb}
 }
 
 func (bf *BindFeature) Elem() stravaganza.Element {
@@ -35,6 +41,9 @@ func (bf *BindFeature) Match(elem stravaganza.Element) bool {
 
 func (bf *BindFeature) Handle(elem stravaganza.Element, part Part) error {
 	id := elem.Attribute("id")
+	jid := part.Attr().JID.String()
+	part.Attr().JID.Resource = bf.resource(elem)
+	bf.rsb.BindResource(jid, part.Attr().JID.Resource)
 	err := part.GoingStream().SendElement(stravaganza.NewBuilder("iq").
 		WithAttribute("type", "result").
 		WithAttribute("id", id).WithChild(
@@ -47,4 +56,8 @@ func (bf *BindFeature) Handle(elem stravaganza.Element, part Part) error {
 			).Build(),
 	).Build())
 	return err
+}
+
+func (bf *BindFeature) resource(elem stravaganza.Element) string {
+	return "resource"
 }

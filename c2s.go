@@ -27,8 +27,8 @@ func (c2s *C2S) WithSASLSupport(name string, auth Auth) *C2S {
 	return c2s
 }
 
-func (c2s *C2S) WithBind() *C2S {
-	c2s.bind = NewBindFeature()
+func (c2s *C2S) WithBind(rb ResourceBinder) *C2S {
+	c2s.bind = NewBindFeature(rb)
 	return c2s
 }
 

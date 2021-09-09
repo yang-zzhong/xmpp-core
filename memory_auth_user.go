@@ -131,6 +131,15 @@ func (ma *MemoryAuthorized) Authorized(username string, part Part) {
 	ma.parts[username] = part
 }
 
+func (ma *MemoryAuthorized) BindResource(jid string, resource string) error {
+	if part, ok := ma.parts[jid]; ok {
+		delete(ma.parts, jid)
+		ma.parts[jid+resource] = part
+		return nil
+	}
+	return errors.New("jid not found")
+}
+
 func (ma *MemoryAuthorized) Find(jid *JID) Part {
 	if part, ok := ma.parts[jid.String()]; ok {
 		return part

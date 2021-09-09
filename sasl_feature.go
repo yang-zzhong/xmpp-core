@@ -177,7 +177,7 @@ func (mf *SASLFeature) Resolve(part Part) error {
 	}
 	part.Attr().JID.Username = username
 	part.Attr().JID.Domain = part.Attr().Domain
-	mf.authorized.Authorized(username, part)
+	mf.authorized.Authorized(part.Attr().JID.String(), part)
 	return nil
 }
 

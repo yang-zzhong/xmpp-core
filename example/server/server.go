@@ -138,7 +138,7 @@ func (s *Server) c2sHandler(conn xmppcore.Conn) {
 			WithSASLSupport(xmppcore.SM_SCRAM_SHA_256, xmppcore.NewScramAuth(false, memoryAuthUserFetcher, sha256.New)).
 			WithSASLSupport(xmppcore.SM_SCRAM_SHA_512, xmppcore.NewScramAuth(false, memoryAuthUserFetcher, sha512.New))
 	}
-	c2s.WithBind().WithCompressSupport("zlib", func(conn io.ReadWriter) xmppcore.Compressor {
+	c2s.WithBind(memoryAuthorized).WithCompressSupport("zlib", func(conn io.ReadWriter) xmppcore.Compressor {
 		return xmppcore.NewCompZlib(conn)
 	})
 	c2s.WithElemHandler(xmppcore.NewMessageRouter(memoryAuthorized))
