@@ -1,8 +1,8 @@
 package main
 
 import (
-	goxmppclient "xmpp-core/example/clients/go-xmpp-client"
-	"xmpp-core/example/server"
+	goxmppclient "github.com/yang-zzhong/xmpp-core/example/clients/go-xmpp-client"
+	"github.com/yang-zzhong/xmpp-core/example/server"
 
 	"github.com/spf13/cobra"
 )

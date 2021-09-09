@@ -60,7 +60,7 @@ func (wsc *WsConnGrabber) Grab(connChan chan Conn) error {
 		close(connChan)
 	})
 	go func() {
-		wsc.logger.Printf(Info, "ws connection listen on %s for c2s\n", wsc.listenOn)
+		wsc.logger.Printf(Info, "ws connection listen on %s for C2S\n", wsc.listenOn)
 		if err := wsc.srv.ListenAndServe(); err != nil {
 			wsc.logger.Printf(Info, "ws conn server close unexpected: %s\n", err.Error())
 			return

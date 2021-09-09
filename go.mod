@@ -1,4 +1,4 @@
-module xmpp-core
+module github.com/yang-zzhong/xmpp-core
 
 go 1.16
 

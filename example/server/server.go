@@ -9,7 +9,8 @@ import (
 	"io"
 	"os"
 	"sync"
-	xmppcore "xmpp-core"
+
+	xmppcore "github.com/yang-zzhong/xmpp-core"
 
 	"github.com/gorilla/websocket"
 )

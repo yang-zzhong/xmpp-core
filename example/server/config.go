@@ -1,7 +1,7 @@
 package server
 
 import (
-	xmppcore "xmpp-core"
+	xmppcore "github.com/yang-zzhong/xmpp-core"
 )
 
 type WsConnConfig struct {
