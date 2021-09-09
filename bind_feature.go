@@ -42,7 +42,7 @@ func (bf *BindFeature) Handle(elem stravaganza.Element, part Part) error {
 			WithAttribute("xmlns", nsBind).
 			WithChild(
 				stravaganza.NewBuilder("jid").
-					WithText(part.CommingStream().JID().String()).
+					WithText(part.Attr().JID.String()).
 					Build(),
 			).Build(),
 	).Build())

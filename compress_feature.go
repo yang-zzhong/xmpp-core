@@ -5,9 +5,13 @@ import (
 )
 
 const (
-	nsCompress          = "http://jabber.org/protocol/compress"
+	nsCompress = "http://jabber.org/protocol/compress"
+
 	CESetupFailed       = "setup-failed"
 	CEUnsupportedMethod = "unsupported-method"
+
+	ZLIB = "zlib"
+	LZW  = "lzw"
 )
 
 func CompressErrorElem(name string) stravaganza.Element {

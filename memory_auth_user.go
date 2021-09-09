@@ -130,3 +130,10 @@ func NewMemoryAuthorized() *MemoryAuthorized {
 func (ma *MemoryAuthorized) Authorized(username string, part Part) {
 	ma.parts[username] = part
 }
+
+func (ma *MemoryAuthorized) Find(jid *JID) Part {
+	if part, ok := ma.parts[jid.String()]; ok {
+		return part
+	}
+	return nil
+}

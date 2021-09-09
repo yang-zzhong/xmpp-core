@@ -141,8 +141,7 @@ func (s *Server) c2sHandler(conn xmppcore.Conn) {
 	c2s.WithBind().WithCompressSupport("zlib", func(conn io.ReadWriter) xmppcore.Compressor {
 		return xmppcore.NewCompZlib(conn)
 	})
-	c2s.WithElemHandler(&xmppcore.EchoMessageHandler{})
-	c2s.WithElemHandler(&xmppcore.MessageRouter{})
+	c2s.WithElemHandler(xmppcore.NewMessageRouter(memoryAuthorized))
 	if err := c2s.Start(); err != nil {
 		s.logger.Printf(xmppcore.Error, err.Error())
 	}

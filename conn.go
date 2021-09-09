@@ -22,11 +22,11 @@ type Conn interface {
 type TcpConn struct {
 	underlying net.Conn
 	comp       Compressor
-	isTls      bool
+	isClient   bool
 }
 
-func NewTcpConn(underlying *net.TCPConn) *TcpConn {
-	return &TcpConn{underlying, nil, false}
+func NewTcpConn(underlying net.Conn, isClient bool) *TcpConn {
+	return &TcpConn{underlying, nil, isClient}
 }
 
 func (conn *TcpConn) Read(b []byte) (int, error) {
@@ -80,9 +80,14 @@ func (conn *TcpConn) BindTlsUnique(w io.Writer) error {
 }
 
 func (conn *TcpConn) StartTLS(conf *tls.Config) {
-	underlying := tls.Server(conn.underlying, conf)
-	conn.underlying = underlying
-	conn.isTls = true
+	if _, ok := conn.underlying.(*tls.Conn); ok {
+		return
+	}
+	if !conn.isClient {
+		conn.underlying = tls.Server(conn.underlying, conf)
+		return
+	}
+	conn.underlying = tls.Client(conn.underlying, conf)
 }
 
 func (conn *TcpConn) StartCompress(buildCompress BuildCompressor) {

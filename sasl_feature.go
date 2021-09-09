@@ -175,7 +175,8 @@ func (mf *SASLFeature) Resolve(part Part) error {
 		part.GoingStream().SendElement(SaslFailureElemFromError(err))
 		return err
 	}
-	part.CommingStream().JID().Username = username
+	part.Attr().JID.Username = username
+	part.Attr().JID.Domain = part.Attr().Domain
 	mf.authorized.Authorized(username, part)
 	return nil
 }

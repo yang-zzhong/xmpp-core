@@ -7,28 +7,22 @@ import (
 	"io"
 	"strings"
 
-	"github.com/google/uuid"
 	"github.com/jackal-xmpp/stravaganza/v2"
 )
 
-type StreamAttr interface {
-	ID() string
-	JID() *JID
-	Version() string
-
-	SetVersion(string)
-	SetID(string)
-}
+var (
+	ErrNotHeaderStart       = errors.New("not a start header")
+	ErrNotForThisDomainHead = errors.New("not for this domain header")
+)
 
 type CommingStream interface {
-	StreamAttr
-	WaitHeader(header *xml.StartElement) error
+	WaitHeader(header *PartAttr) error
 	NextToken(token *xml.Token) error
 	NextElement(elem *stravaganza.Element) error
 }
 
 type GoingStream interface {
-	Open(commingStream CommingStream) error
+	Open(attr *PartAttr) error
 	Send([]byte) error
 	SendToken(xml.Token) error
 	SendElement(stravaganza.Element) error
@@ -69,59 +63,23 @@ func (jid *JID) String() string {
 	return fmt.Sprintf("%s@%s%s", jid.Username, jid.Domain, jid.Resource)
 }
 
-type XStreamAttr struct {
-	id      string
-	jid     JID
-	version string
-}
-
-func NewXStreamAttr() *XStreamAttr {
-	return &XStreamAttr{id: uuid.New().String(), jid: JID{}}
-}
-
-func (xs *XStreamAttr) ID() string {
-	return xs.id
-}
-
-func (xs *XStreamAttr) JID() *JID {
-	return &xs.jid
-}
-
-func (xs *XStreamAttr) Domain() string {
-	return xs.jid.Domain
-}
-
-func (xs *XStreamAttr) Version() string {
-	return xs.version
-}
-
-func (xs *XStreamAttr) SetJID(jid JID) {
-	xs.jid = jid
-}
-
-func (xs *XStreamAttr) SetID(id string) {
-	xs.id = id
-}
-
-func (xs *XStreamAttr) SetVersion(v string) {
-	xs.version = v
+func (jid *JID) Equal(a *JID) bool {
+	return jid.Username == a.Username && jid.Domain == a.Domain && jid.Resource == a.Resource
 }
 
 type XCommingStream struct {
-	conn    Conn
-	decoder *xml.Decoder
-	max     int
-	*XStreamAttr
+	conn     io.Reader
+	decoder  *xml.Decoder
+	max      int
+	isServer bool
 }
 
-func NewXCommingStream(conn Conn, domain string) *XCommingStream {
-	xs := NewXStreamAttr()
-	xs.JID().Domain = domain
+func NewXCommingStream(conn Conn, isServer bool) *XCommingStream {
 	return &XCommingStream{
-		conn:        conn,
-		decoder:     xml.NewDecoder(conn),
-		max:         1024 * 1024 * 2,
-		XStreamAttr: xs,
+		conn:     conn,
+		decoder:  xml.NewDecoder(conn),
+		max:      1024 * 1024 * 2,
+		isServer: isServer,
 	}
 }
 
@@ -137,7 +95,7 @@ func (xc *XCommingStream) NextElement(elem *stravaganza.Element) error {
 	return err
 }
 
-func (xc *XCommingStream) WaitHeader(header *xml.StartElement) error {
+func (xc *XCommingStream) WaitHeader(attr *PartAttr) error {
 	var token xml.Token
 	for {
 		if err := xc.NextToken(&token); err != nil {
@@ -145,35 +103,10 @@ func (xc *XCommingStream) WaitHeader(header *xml.StartElement) error {
 		}
 		switch elem := token.(type) {
 		case xml.StartElement:
-			if elem.Name.Local != "stream" || elem.Name.Space != nsStream {
-				continue
+			if xc.isServer {
+				return attr.ParseToServer(elem)
 			}
-			if header != nil {
-				*header = elem
-			}
-			var version string
-			var domain string
-			for _, attr := range elem.Attr {
-				if attr.Name.Local == "from" && attr.Value != "" {
-					value := strings.Split(attr.Value, "@")
-					if len(value) < 2 {
-						return ErrUnproperFromAttr
-					}
-					xc.JID().Username = value[0]
-					if xc.JID().Domain != value[1] {
-						return ErrUnproperFromAttr
-					}
-				} else if attr.Name.Local == "to" {
-					domain = attr.Value
-				} else if attr.Name.Local == "version" {
-					version = attr.Value
-				}
-			}
-			if domain != xc.JID().Domain {
-				return ErrUnproperFromAttr
-			}
-			xc.SetVersion(version)
-			return nil
+			return attr.ParseToClient(elem)
 		default:
 			continue
 		}
@@ -181,28 +114,24 @@ func (xc *XCommingStream) WaitHeader(header *xml.StartElement) error {
 }
 
 type XGoingStream struct {
-	conn    io.Writer
-	encoder *xml.Encoder
+	conn     io.Writer
+	encoder  *xml.Encoder
+	isServer bool
 }
 
-func NewXGoingStream(conn io.Writer) *XGoingStream {
-	return &XGoingStream{conn, xml.NewEncoder(conn)}
+func NewXGoingStream(conn io.Writer, isServer bool) *XGoingStream {
+	return &XGoingStream{conn, xml.NewEncoder(conn), isServer}
 }
 
-func (gs *XGoingStream) Open(commingStream CommingStream) error {
+func (gs *XGoingStream) Open(attr *PartAttr) error {
 	gs.Send([]byte("<?xml version='1.0'?>"))
-	attr := []xml.Attr{
-		{Name: xml.Name{Local: "version"}, Value: commingStream.Version()},
-		{Name: xml.Name{Local: "xmlns"}, Value: nsStream},
-		{Name: xml.Name{Local: "from"}, Value: commingStream.JID().Domain},
-		{Name: xml.Name{Local: "id"}, Value: commingStream.ID()},
+	var elem xml.StartElement
+	if gs.isServer {
+		attr.ToClientHead(&elem)
+		return gs.SendToken(elem)
 	}
-	if commingStream.JID().Username != "" {
-		attr = append(attr, xml.Attr{Name: xml.Name{Local: "to"}, Value: commingStream.JID().String()})
-	}
-	return gs.SendToken(xml.StartElement{
-		Name: xml.Name{Space: nsStream, Local: "stream"},
-		Attr: attr})
+	attr.ToServerHead(&elem)
+	return gs.SendToken(elem)
 }
 
 func (gs *XGoingStream) Send(bs []byte) error {

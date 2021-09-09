@@ -53,7 +53,7 @@ func (wsc *WsConnGrabber) Grab(connChan chan Conn) error {
 		uc := wsconn.UnderlyingConn()
 		wsc.logger.Printf(Info, "comming a ws connection from %s\n", uc.RemoteAddr().String())
 		c, _ := uc.(*net.TCPConn)
-		connChan <- NewTcpConn(c)
+		connChan <- NewTcpConn(c, false)
 	}))
 	wsc.srv = &http.Server{Handler: mux, Addr: wsc.listenOn}
 	wsc.srv.RegisterOnShutdown(func() {
@@ -124,7 +124,7 @@ func (tc *TcpConnGrabber) Grab(connChan chan Conn) error {
 				}
 				tc.logger.Printf(Info, "comming a tcp connection from %s on %s\n", conn.RemoteAddr().String(), tc.listenOn)
 				c, _ := conn.(*net.TCPConn)
-				connChan <- NewTcpConn(c)
+				connChan <- NewTcpConn(c, false)
 			}
 		}
 	}()

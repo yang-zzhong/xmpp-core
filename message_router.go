@@ -1,8 +1,24 @@
 package xmppcore
 
-import "github.com/jackal-xmpp/stravaganza/v2"
+import (
+	"io"
+	"net"
 
-type MessageRouter struct{}
+	"github.com/jackal-xmpp/stravaganza/v2"
+)
+
+type PartFinder interface {
+	Find(*JID) Part
+}
+
+type MessageRouter struct {
+	hub    *MsgHub
+	finder PartFinder
+}
+
+func NewMessageRouter(finder PartFinder) *MessageRouter {
+	return &MessageRouter{finder: finder}
+}
 
 func (msg *MessageRouter) Match(elem stravaganza.Element) bool {
 	return elem.Name() == "message"
@@ -14,9 +30,60 @@ func (msg *MessageRouter) Handle(elem stravaganza.Element, part Part) error {
 	if err := ParseJID(to, &jid); err != nil {
 		return err
 	}
-	if jid.Domain != part.CommingStream().JID().Domain {
-		// route to other server
+	if jid.Domain == part.Attr().Domain {
+		other := msg.finder.Find(&jid)
+		if other == nil {
+			return nil
+		}
+		return other.GoingStream().SendElement(elem)
 	}
-	// route to other user on this server
-	return nil
+	if msg.hub == nil {
+		msg.hub = NewMsgHub(part)
+	}
+	conn, err := net.Dial("tcp", jid.Domain)
+	if err != nil {
+		// error
+	}
+	mp := msg.outClient(conn, &jid, part)
+	return mp.GoingStream().SendElement(elem)
+}
+
+func (msg *MessageRouter) outClient(conn net.Conn, jid *JID, c2s Part) Part {
+	part := NewClientPart(NewTcpConn(conn, true), c2s.Logger(), &PartAttr{JID: *jid, Domain: c2s.Attr().Domain})
+	part.WithFeature(&ClientTlsFeature{})
+	ccf := NewClientCompressFeature()
+	ccf.Support(ZLIB, func(rw io.ReadWriter) Compressor {
+		return NewCompZlib(rw)
+	})
+	part.WithFeature(ccf)
+	go func() {
+		part.Run()
+	}()
+	part.WithElemHandler(msg.hub)
+	msg.hub.AddRemote(jid.Domain, part)
+	return part
+}
+
+type MsgHub struct {
+	c2s Part
+	out map[string]Part
+}
+
+func NewMsgHub(c2s Part) *MsgHub {
+	return &MsgHub{c2s: c2s, out: make(map[string]Part)}
+}
+
+func (msgHub *MsgHub) Match(_ stravaganza.Element) bool {
+	return true
+}
+
+func (msgHub *MsgHub) Handle(elem stravaganza.Element, _ Part) error {
+	return msgHub.c2s.GoingStream().SendElement(elem)
+}
+
+func (msgHub *MsgHub) AddRemote(domain string, out Part) {
+	if _, ok := msgHub.out[domain]; ok {
+		return
+	}
+	msgHub.out[domain] = out
 }

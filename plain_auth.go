@@ -28,17 +28,10 @@ func NewPlainAuth(uf PlainAuthUserFetcher, hashCreate func() hash.Hash) *PlainAu
 }
 
 func (auth *PlainAuth) Auth(mechanism, authInfo string, part Part) (username string, err error) {
-	var payload string
-	if err = AuthPayload(authInfo, &payload); err != nil {
+	var password string
+	if err = auth.decodePayload(authInfo, &username, &password); err != nil {
 		return
 	}
-	res := bytes.Split([]byte(payload), []byte{0x00})
-	if len(res) != 3 {
-		err = SaslFailureError(SFIncorrectEncoding, "")
-		return
-	}
-	username = string(res[1])
-	password := string(res[2])
 	user, err := auth.userFetcher.UserByUsername(username)
 	if err != nil {
 		return "", SaslFailureError(SFTemporaryAuthFailure, err.Error())
@@ -52,4 +45,18 @@ func (auth *PlainAuth) Auth(mechanism, authInfo string, part Part) (username str
 		WithAttribute("xmlns", nsSASL).
 		WithText(base64.StdEncoding.EncodeToString([]byte(uuid.New().String()))).Build())
 	return username, nil
+}
+
+func (auth *PlainAuth) decodePayload(authInfo string, username, password *string) error {
+	var payload string
+	if err := AuthPayload(authInfo, &payload); err != nil {
+		return err
+	}
+	res := bytes.Split([]byte(payload), []byte{0x00})
+	if len(res) != 3 {
+		return SaslFailureError(SFIncorrectEncoding, "")
+	}
+	*username = string(res[1])
+	*password = string(res[2])
+	return nil
 }
