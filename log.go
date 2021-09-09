@@ -25,20 +25,20 @@ type Logger interface {
 	Printf(level LogLevel, format string, v ...interface{})
 }
 
-type DefaultLogger struct {
+type XLogger struct {
 	underlying *log.Logger
 	mode       LogMode
 }
 
-func NewDefaultLogger(w io.Writer) *DefaultLogger {
-	return &DefaultLogger{log.New(w, "", log.Ltime), DebugMode}
+func NewLogger(w io.Writer) *XLogger {
+	return &XLogger{log.New(w, "", log.Ltime), DebugMode}
 }
 
-func (logger *DefaultLogger) SetMode(mode LogMode) {
+func (logger *XLogger) SetMode(mode LogMode) {
 	logger.mode = mode
 }
 
-func (logger *DefaultLogger) Printf(level LogLevel, format string, v ...interface{}) {
+func (logger *XLogger) Printf(level LogLevel, format string, v ...interface{}) {
 	lowest := Debug
 	if logger.mode == ProductionMode {
 		lowest = Info
@@ -54,7 +54,7 @@ func (logger *DefaultLogger) Printf(level LogLevel, format string, v ...interfac
 	}
 }
 
-func (logger *DefaultLogger) levelString(level LogLevel) string {
+func (logger *XLogger) levelString(level LogLevel) string {
 	if level > 4 {
 		panic("log level overflow")
 	}

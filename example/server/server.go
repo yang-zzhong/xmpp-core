@@ -28,7 +28,7 @@ func New(conf *Config) *Server {
 		config:       conf,
 		connGrabbers: []xmppcore.ConnGrabber{},
 		conns:        []xmppcore.Conn{},
-		logger:       xmppcore.NewDefaultLogger(os.Stdout)}
+		logger:       xmppcore.NewLogger(os.Stdout)}
 }
 
 func (s *Server) Start() error {
