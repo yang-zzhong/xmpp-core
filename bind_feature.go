@@ -1,18 +1,46 @@
 package xmppcore
 
-import "github.com/jackal-xmpp/stravaganza/v2"
+import (
+	"errors"
+	"strings"
+
+	"github.com/jackal-xmpp/stravaganza/v2"
+)
 
 type BindFeature struct {
 	rsb ResourceBinder
 }
 
 type ResourceBinder interface {
-	BindResource(userdomain, resource string) error
+	BindResource(part Part, resource string) (string, error)
 }
 
 const (
-	nsBind = "urn:ietf:params:xml:ns:xmpp-bind"
+	nsBind   = "urn:ietf:params:xml:ns:xmpp-bind"
+	nsStanza = "urn:ietf:params:xml:ns:xmpp-stanzas"
+
+	BEResourceConstraint = "wait: resource constraint"
+	BENotAllowed         = "cancel: not allowed"
 )
+
+func BindErrorElem(id, tag, typ string) stravaganza.Element {
+	return stravaganza.NewIQBuilder().
+		WithAttribute("id", id).
+		WithAttribute("type", "error").
+		WithChild(stravaganza.NewBuilder("error").
+			WithAttribute("type", typ).
+			WithChild(stravaganza.NewBuilder(tag).WithAttribute("xmlns", nsStanza).Build()).Build()).Build()
+}
+
+func ErrBind(err string) error {
+	return errors.New(err)
+}
+
+func BindErrorElemFromError(id string, err error) stravaganza.Element {
+	ss := strings.Split(err.Error(), ":")
+	errTag := strings.Trim(ss[1], " ")
+	return BindErrorElem(id, errTag, ss[0])
+}
 
 func NewBindFeature(rsb ResourceBinder) *BindFeature {
 	return &BindFeature{rsb: rsb}
@@ -41,23 +69,24 @@ func (bf *BindFeature) Match(elem stravaganza.Element) bool {
 
 func (bf *BindFeature) Handle(elem stravaganza.Element, part Part) error {
 	id := elem.Attribute("id")
-	jid := part.Attr().JID.String()
-	part.Attr().JID.Resource = bf.resource(elem)
-	bf.rsb.BindResource(jid, part.Attr().JID.Resource)
-	err := part.GoingStream().SendElement(stravaganza.NewBuilder("iq").
+	rsc, err := bf.rsb.BindResource(part, bf.resource(elem))
+	if err != nil {
+		part.Channel().SendElement(BindErrorElemFromError(id, err))
+		return err
+	}
+	return part.Channel().SendElement(stravaganza.NewBuilder("iq").
 		WithAttribute("type", "result").
 		WithAttribute("id", id).WithChild(
 		stravaganza.NewBuilder("bind").
 			WithAttribute("xmlns", nsBind).
 			WithChild(
 				stravaganza.NewBuilder("jid").
-					WithText(part.Attr().JID.String()).
+					WithText(rsc).
 					Build(),
 			).Build(),
 	).Build())
-	return err
 }
 
 func (bf *BindFeature) resource(elem stravaganza.Element) string {
-	return "resource"
+	return ""
 }

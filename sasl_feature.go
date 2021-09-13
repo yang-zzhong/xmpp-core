@@ -122,7 +122,7 @@ func NewSASLFeature(authorized Authorized) *SASLFeature {
 	return mf
 }
 
-func (mf *SASLFeature) notifySupported(s GoingStream) error {
+func (mf *SASLFeature) notifySupported(s Sender) error {
 	if len(mf.supported) == 0 {
 		return nil
 	}
@@ -153,7 +153,7 @@ func (mf *SASLFeature) Unsupport(name string) *SASLFeature {
 }
 
 func (mf *SASLFeature) Resolve(part Part) error {
-	if err := mf.notifySupported(part.GoingStream()); err != nil {
+	if err := mf.notifySupported(part.Channel()); err != nil {
 		return err
 	}
 	as, mech, err := mf.clientRequest(part)
@@ -167,12 +167,12 @@ func (mf *SASLFeature) Resolve(part Part) error {
 			supported = append(supported, k)
 		}
 		desc := fmt.Sprintf("only support [%s] in this server, client preffers [%s]", strings.Join(supported, ","), mech)
-		part.GoingStream().SendElement(SaslFailureElem(SFInvalidMechanism, desc))
+		part.Channel().SendElement(SaslFailureElem(SFInvalidMechanism, desc))
 		return SaslFailureError(SFInvalidMechanism, desc)
 	}
 	username, err := auth.Auth(mech, as, part)
 	if err != nil {
-		part.GoingStream().SendElement(SaslFailureElemFromError(err))
+		part.Channel().SendElement(SaslFailureElemFromError(err))
 		return err
 	}
 	part.Attr().JID.Username = username
@@ -182,14 +182,14 @@ func (mf *SASLFeature) Resolve(part Part) error {
 }
 
 func (mf *SASLFeature) clientRequest(part Part) (as string, mechanism string, err error) {
-	elem, e := mf.nextElement(part)
+	elem, e := mf.nextElement(part.Channel())
 	if e != nil {
 		err = e
 		return
 	}
 	if elem.Name() != "auth" {
 		err = SaslFailureError(SFIncorrectEncoding, "not a auth elem from client")
-		part.GoingStream().SendElement(SaslFailureElemFromError(err))
+		part.Channel().SendElement(SaslFailureElemFromError(err))
 		return
 	}
 	as = elem.Text()
@@ -197,13 +197,13 @@ func (mf *SASLFeature) clientRequest(part Part) (as string, mechanism string, er
 	return
 }
 
-func (mf *SASLFeature) nextElement(part Part) (stravaganza.Element, error) {
+func (mf *SASLFeature) nextElement(s Channel) (stravaganza.Element, error) {
 	var elem stravaganza.Element
-	if err := part.CommingStream().NextElement(&elem); err != nil {
+	if err := s.NextElement(&elem); err != nil {
 		return elem, err
 	}
 	if elem.Name() == "abort" {
-		part.GoingStream().SendElement(SaslFailureElem(SFAborted, ""))
+		s.SendElement(SaslFailureElem(SFAborted, ""))
 		return nil, SaslFailureError(SFAborted, "")
 	}
 	return elem, nil

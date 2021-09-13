@@ -8,7 +8,7 @@ import (
 )
 
 type PartFinder interface {
-	Find(*JID) Part
+	FindPart(*JID) Part
 }
 
 type MessageRouter struct {
@@ -31,11 +31,11 @@ func (msg *MessageRouter) Handle(elem stravaganza.Element, part Part) error {
 		return err
 	}
 	if jid.Domain == part.Attr().Domain {
-		other := msg.finder.Find(&jid)
+		other := msg.finder.FindPart(&jid)
 		if other == nil {
 			return nil
 		}
-		return other.GoingStream().SendElement(elem)
+		return other.Channel().SendElement(elem)
 	}
 	if msg.hub == nil {
 		msg.hub = NewMsgHub(part)
@@ -45,7 +45,7 @@ func (msg *MessageRouter) Handle(elem stravaganza.Element, part Part) error {
 		// error
 	}
 	mp := msg.outClient(conn, &jid, part)
-	return mp.GoingStream().SendElement(elem)
+	return mp.Channel().SendElement(elem)
 }
 
 func (msg *MessageRouter) outClient(conn net.Conn, jid *JID, c2s Part) Part {
@@ -78,7 +78,7 @@ func (msgHub *MsgHub) Match(_ stravaganza.Element) bool {
 }
 
 func (msgHub *MsgHub) Handle(elem stravaganza.Element, _ Part) error {
-	return msgHub.c2s.GoingStream().SendElement(elem)
+	return msgHub.c2s.Channel().SendElement(elem)
 }
 
 func (msgHub *MsgHub) AddRemote(domain string, out Part) {

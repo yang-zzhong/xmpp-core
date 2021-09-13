@@ -15,8 +15,10 @@ const (
 	ForC2S = ConnFor("C2S")
 	ForS2S = ConnFor("S2S")
 
-	TCPConn = ConnType("TCP")
-	WSConn  = ConnType("WS-TCP")
+	TCPConn   = ConnType("TCP")
+	TLSConn   = ConnType("TLS")
+	WSConn    = ConnType("WS-TCP")
+	WSTLSConn = ConnType("WS-TLS")
 )
 
 type ConnGrabber interface {

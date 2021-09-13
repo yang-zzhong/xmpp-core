@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/yang-zzhong/xmpp-core/example/clients/client"
 	goxmppclient "github.com/yang-zzhong/xmpp-core/example/clients/go-xmpp-client"
 	"github.com/yang-zzhong/xmpp-core/example/server"
 
@@ -27,18 +28,28 @@ var serverCmd = &cobra.Command{
 	},
 }
 
+var xmppClientCmd = &cobra.Command{
+	Use:   "start-xmpp-client",
+	Short: "start-xmpp-client",
+	Long:  "start-xmpp-client",
+	Run: func(cmd *cobra.Command, args []string) {
+		goxmppclient.Start()
+	},
+}
+
 var clientCmd = &cobra.Command{
 	Use:   "start-client",
 	Short: "start-client",
 	Long:  "start-client",
 	Run: func(cmd *cobra.Command, args []string) {
-		goxmppclient.Start()
+		client.Start()
 	},
 }
 
 func init() {
 	rootCmd.AddCommand(serverCmd)
 	rootCmd.AddCommand(clientCmd)
+	rootCmd.AddCommand(xmppClientCmd)
 }
 
 func main() {

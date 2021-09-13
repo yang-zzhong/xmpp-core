@@ -49,13 +49,13 @@ func (cf *CompressionFeature) Match(elem stravaganza.Element) bool {
 func (cf *CompressionFeature) Handle(elem stravaganza.Element, part Part) error {
 	method := elem.Child("method")
 	if method == nil || len(method.Text()) == 0 {
-		return part.GoingStream().SendElement(CompressErrorElem(CESetupFailed))
+		return part.Channel().SendElement(CompressErrorElem(CESetupFailed))
 	}
 	build, ok := cf.supported[method.Text()]
 	if !ok {
-		return part.GoingStream().SendElement(CompressErrorElem(CEUnsupportedMethod))
+		return part.Channel().SendElement(CompressErrorElem(CEUnsupportedMethod))
 	}
-	if err := part.GoingStream().SendElement(stravaganza.NewBuilder("compressed").
+	if err := part.Channel().SendElement(stravaganza.NewBuilder("compressed").
 		WithAttribute(stravaganza.Namespace, nsCompress).
 		Build(),
 	); err != nil {

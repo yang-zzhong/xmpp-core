@@ -32,8 +32,8 @@ type ElemHandler interface {
 type Part interface {
 	ID() string
 	Attr() *PartAttr
-	CommingStream() CommingStream
-	GoingStream() GoingStream
+	Channel() Channel
+	WithElemHandler(ElemHandler)
 	Logger() Logger
 	Conn() Conn
 	Run() error
@@ -41,15 +41,16 @@ type Part interface {
 }
 
 type ElemRunner struct {
+	channel      Channel
 	elemHandlers []ElemHandler
 	quitChan     chan bool
 	quit         bool
 }
 
-func NewElemRunner() *ElemRunner {
+func NewElemRunner(channel Channel) *ElemRunner {
 	return &ElemRunner{
+		channel:      channel,
 		elemHandlers: []ElemHandler{},
-		quitChan:     make(chan bool),
 		quit:         false,
 	}
 }
@@ -64,29 +65,27 @@ func (er *ElemRunner) Running() bool {
 
 func (er *ElemRunner) Quit() {
 	er.quit = true
-	er.quitChan <- true
+	er.channel.Close()
 }
 
 func (er *ElemRunner) Run(part Part, errChan chan error) {
 	go func() {
 		for {
-			select {
-			case <-er.quitChan:
-				errChan <- nil
-				return
-			default:
-				var elem stravaganza.Element
-				if err := part.CommingStream().NextElement(&elem); err != nil {
-					part.Logger().Printf(Error, "a error from part instance [%s] message handler: %s", part.ID(), err.Error())
-					errChan <- err
+			var elem stravaganza.Element
+			if err := er.channel.NextElement(&elem); err != nil {
+				if er.quit == true {
+					errChan <- nil
 					return
 				}
-				for _, handler := range er.elemHandlers {
-					if handler.Match(elem) {
-						if err := handler.Handle(elem, part); err != nil {
-							part.Logger().Printf(Error, "a error occured from part instance [%s] message handler: %s", part.ID(), err.Error())
-							errChan <- err
-						}
+				part.Logger().Printf(Error, "a error from part instance [%s] message handler: %s", part.ID(), err.Error())
+				errChan <- err
+				return
+			}
+			for _, handler := range er.elemHandlers {
+				if handler.Match(elem) {
+					if err := handler.Handle(elem, part); err != nil {
+						part.Logger().Printf(Error, "a error occured from part instance [%s] message handler: %s", part.ID(), err.Error())
+						errChan <- err
 					}
 				}
 			}
@@ -179,7 +178,7 @@ func (sa *PartAttr) ParseToClient(elem xml.StartElement) error {
 			if err := ParseJID(attr.Value, &jid); err != nil {
 				return err
 			}
-			if jid.Equal(&sa.JID) {
+			if !jid.Equal(&sa.JID) {
 				return ErrNotForThisDomainHead
 			}
 		} else if attr.Name.Local == "from" {
@@ -194,8 +193,7 @@ func (sa *PartAttr) ParseToClient(elem xml.StartElement) error {
 }
 
 type XPart struct {
-	commingStream    CommingStream
-	goingStream      GoingStream
+	channel          Channel
 	requiredFeatures []RequiredFeature
 	optionalFeatures []OptionalFeature
 	logger           Logger
@@ -205,16 +203,15 @@ type XPart struct {
 }
 
 func NewXPart(conn Conn, domain string, logger Logger) *XPart {
-	commingStream := NewXCommingStream(conn, true)
+	channel := NewXChannel(conn, true)
 	return &XPart{
-		commingStream:    commingStream,
-		goingStream:      NewXGoingStream(conn, true),
+		channel:          channel,
 		requiredFeatures: []RequiredFeature{},
 		optionalFeatures: []OptionalFeature{},
 		logger:           logger,
 		conn:             conn,
 		attr:             PartAttr{Domain: domain, ID: uuid.New().String()},
-		ElemRunner:       NewElemRunner(),
+		ElemRunner:       NewElemRunner(channel),
 	}
 }
 
@@ -226,12 +223,8 @@ func (part *XPart) Conn() Conn {
 	return part.conn
 }
 
-func (part *XPart) CommingStream() CommingStream {
-	return part.commingStream
-}
-
-func (part *XPart) GoingStream() GoingStream {
-	return part.goingStream
+func (part *XPart) Channel() Channel {
+	return part.channel
 }
 
 func (part *XPart) WithRequiredFeature(f RequiredFeature) {
@@ -270,7 +263,7 @@ func (part *XPart) handleFeatures() error {
 		}
 		if err := f.Resolve(part); err != nil {
 			if err == ErrClientIgnoredTheFeature {
-				part.goingStream.Open(part.Attr())
+				part.channel.Open(part.Attr())
 				reopened = true
 				continue
 			}
@@ -288,7 +281,7 @@ func (part *XPart) handleFeatures() error {
 
 func (part *XPart) handleUnrequiredFeature() error {
 	if len(part.optionalFeatures) == 0 {
-		return part.goingStream.SendElement(stravaganza.NewBuilder("features").Build())
+		return part.channel.SendElement(stravaganza.NewBuilder("features").Build())
 	}
 	es := []stravaganza.Element{}
 	for _, f := range part.optionalFeatures {
@@ -296,14 +289,14 @@ func (part *XPart) handleUnrequiredFeature() error {
 		part.WithElemHandler(f)
 	}
 	fs := stravaganza.NewBuilder("features").WithChildren(es...).Build()
-	return part.goingStream.SendElement(fs)
+	return part.channel.SendElement(fs)
 }
 
 func (part *XPart) reopen() error {
-	if err := part.CommingStream().WaitHeader(&part.attr); err != nil {
+	if err := part.channel.WaitHeader(&part.attr); err != nil {
 		return err
 	}
-	return part.GoingStream().Open(part.Attr())
+	return part.channel.Open(part.Attr())
 }
 
 func (part *XPart) Logger() Logger {

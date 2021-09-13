@@ -9,7 +9,9 @@ type C2S struct {
 }
 
 func NewC2S(conn Conn, domain string, logger Logger) *C2S {
-	return &C2S{part: NewXPart(conn, domain, logger)}
+	part := NewXPart(conn, domain, logger)
+	part.channel.SetLogger(logger)
+	return &C2S{part: part}
 }
 
 func (c2s *C2S) WithTLS(certFile, keyFile string) *C2S {

@@ -23,6 +23,7 @@ const (
 
 type Logger interface {
 	Printf(level LogLevel, format string, v ...interface{})
+	Writer() io.Writer
 }
 
 type XLogger struct {
@@ -36,6 +37,10 @@ func NewLogger(w io.Writer) *XLogger {
 
 func (logger *XLogger) SetMode(mode LogMode) {
 	logger.mode = mode
+}
+
+func (logger *XLogger) Writer() io.Writer {
+	return logger.underlying.Writer()
 }
 
 func (logger *XLogger) Printf(level LogLevel, format string, v ...interface{}) {

@@ -41,7 +41,7 @@ func (auth *PlainAuth) Auth(mechanism, authInfo string, part Part) (username str
 	if user.Password() != string(hp) {
 		return "", SaslFailureError(SFTemporaryAuthFailure, "password error")
 	}
-	part.GoingStream().SendElement(stravaganza.NewBuilder("success").
+	part.Channel().SendElement(stravaganza.NewBuilder("success").
 		WithAttribute("xmlns", nsSASL).
 		WithText(base64.StdEncoding.EncodeToString([]byte(uuid.New().String()))).Build())
 	return username, nil

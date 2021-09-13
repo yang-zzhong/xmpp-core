@@ -33,10 +33,10 @@ func (ccf *ClientCompressFeature) Handle(elem stravaganza.Element, part Part) er
 		WithAttribute("xmlns", nsCompress).
 		WithChild(stravaganza.NewBuilder("method").WithText(selected).Build()).Build()
 
-	if err := part.GoingStream().SendElement(compress); err != nil {
+	if err := part.Channel().SendElement(compress); err != nil {
 		return err
 	}
-	if err := part.CommingStream().NextElement(&elem); err != nil {
+	if err := part.Channel().NextElement(&elem); err != nil {
 		return err
 	}
 	if elem.Name() == "compressed" {

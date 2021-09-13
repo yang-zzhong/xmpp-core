@@ -1,12 +1,11 @@
 package xmppcore
 
 import (
-	"encoding/base64"
 	"errors"
 	"hash"
 
 	"github.com/google/uuid"
-	"golang.org/x/crypto/pbkdf2"
+	scramauth "github.com/yang-zzhong/scram-auth"
 )
 
 type MemoryAuthUser struct {
@@ -64,13 +63,8 @@ func NewMemomryAuthUser(username, password string, hash map[string]func() hash.H
 	u.passwords = make(map[string]string)
 	u.salt = uuid.New().String()
 	for name, hashBuilder := range hash {
-		h := hashBuilder()
-		u.passwords[name] = base64.RawURLEncoding.EncodeToString(
-			pbkdf2.Key(
-				[]byte(password),
-				[]byte(u.salt),
-				u.iterationCount,
-				h.Size(), hashBuilder))
+		s := scramauth.NewServerScramAuth(hashBuilder, scramauth.None, nil)
+		u.passwords[name] = string(s.SaltedPassword([]byte(password), []byte(u.salt), u.iterationCount))
 	}
 	return u
 }
@@ -120,29 +114,27 @@ func (uf *MemoryAuthUserFetcher) UserByUsername(username string) (ScramAuthUser,
 }
 
 type MemoryAuthorized struct {
-	parts map[string]Part
+	parts []Part
 }
 
 func NewMemoryAuthorized() *MemoryAuthorized {
-	return &MemoryAuthorized{parts: make(map[string]Part)}
+	return &MemoryAuthorized{parts: []Part{}}
 }
 
-func (ma *MemoryAuthorized) Authorized(username string, part Part) {
-	ma.parts[username] = part
+func (ma *MemoryAuthorized) Authorized(_ string, part Part) {
+	ma.parts = append(ma.parts, part)
 }
 
-func (ma *MemoryAuthorized) BindResource(jid string, resource string) error {
-	if part, ok := ma.parts[jid]; ok {
-		delete(ma.parts, jid)
-		ma.parts[jid+resource] = part
-		return nil
-	}
-	return errors.New("jid not found")
+func (ma *MemoryAuthorized) BindResource(part Part, resource string) (string, error) {
+	part.Attr().JID.Resource = resource
+	return part.Attr().JID.String(), nil
 }
 
-func (ma *MemoryAuthorized) Find(jid *JID) Part {
-	if part, ok := ma.parts[jid.String()]; ok {
-		return part
+func (ma *MemoryAuthorized) FindPart(jid *JID) Part {
+	for _, part := range ma.parts {
+		if jid.Equal(&part.Attr().JID) {
+			return part
+		}
 	}
 	return nil
 }

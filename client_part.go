@@ -1,32 +1,34 @@
 package xmppcore
 
 import (
+	"errors"
+	"fmt"
+
 	"github.com/google/uuid"
 	"github.com/jackal-xmpp/stravaganza/v2"
 )
 
 type ClientPart struct {
-	id            string
-	features      []ElemHandler
-	commingStream CommingStream
-	goingStream   GoingStream
-	attr          PartAttr
-	logger        Logger
-	conn          Conn
+	features []ElemHandler
+	channel  Channel
+	attr     PartAttr
+	logger   Logger
+	conn     Conn
 	*ElemRunner
 }
 
 func NewClientPart(conn Conn, logger Logger, s *PartAttr) *ClientPart {
-	commingStream := NewXCommingStream(conn, false)
+	channel := NewXChannel(conn, false)
+	if s.ID == "" {
+		s.ID = uuid.New().String()
+	}
 	return &ClientPart{
-		id:            uuid.New().String(),
-		commingStream: commingStream,
-		features:      []ElemHandler{},
-		goingStream:   NewXGoingStream(conn, false),
-		logger:        logger,
-		ElemRunner:    NewElemRunner(),
-		attr:          *s,
-		conn:          conn,
+		features:   []ElemHandler{},
+		channel:    channel,
+		logger:     logger,
+		ElemRunner: NewElemRunner(channel),
+		attr:       *s,
+		conn:       conn,
 	}
 }
 
@@ -34,12 +36,8 @@ func (od *ClientPart) Attr() *PartAttr {
 	return &od.attr
 }
 
-func (od *ClientPart) GoingStream() GoingStream {
-	return od.goingStream
-}
-
-func (od *ClientPart) CommingStream() CommingStream {
-	return od.commingStream
+func (od *ClientPart) Channel() Channel {
+	return od.channel
 }
 
 func (od *ClientPart) WithFeature(h ElemHandler) {
@@ -51,7 +49,7 @@ func (od *ClientPart) Logger() Logger {
 }
 
 func (od *ClientPart) ID() string {
-	return od.id
+	return od.attr.ID
 }
 
 func (od *ClientPart) Conn() Conn {
@@ -90,6 +88,10 @@ func (od *ClientPart) handleFeatures() error {
 				}
 			}
 			if !handled {
+				err := errors.New(fmt.Sprintf("feature [%s] not support", f.GoString()))
+				od.logger.Printf(Error, err.Error())
+				od.channel.Close()
+				return err
 				// no handler
 			}
 		}
@@ -97,12 +99,12 @@ func (od *ClientPart) handleFeatures() error {
 }
 
 func (od *ClientPart) serverFeatures() (res []stravaganza.Element, err error) {
-	od.goingStream.Open(&od.attr)
-	if err = od.CommingStream().WaitHeader(&od.attr); err != nil {
+	od.channel.Open(&od.attr)
+	if err = od.channel.WaitHeader(&od.attr); err != nil {
 		return
 	}
 	var elem stravaganza.Element
-	if err = od.CommingStream().NextElement(&elem); err != nil {
+	if err = od.channel.NextElement(&elem); err != nil {
 		return
 	}
 	if elem.Name() != "features" {
