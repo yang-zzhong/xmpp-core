@@ -94,12 +94,8 @@ func (sta *ScramToAuth) signature(part Part) ([]byte, error) {
 }
 
 func (sta *ScramToAuth) sendResponse(auth *scramauth.ClientScramAuth, r io.Reader, part Part) error {
-	nr, err := auth.Response(r, sta.password)
-	if err != nil {
-		return err
-	}
 	var wr bytes.Buffer
-	if _, err := io.Copy(&wr, nr); err != nil {
+	if err := auth.WriteResMsg(r, sta.password, &wr); err != nil {
 		return err
 	}
 	elem := stravaganza.NewBuilder("response").
@@ -121,9 +117,8 @@ func (sta *ScramToAuth) challenge(part Part) (io.Reader, error) {
 }
 
 func (sta *ScramToAuth) sendRequest(auth *scramauth.ClientScramAuth, part Part) error {
-	r := auth.Request(sta.authzid, sta.username)
 	var buf bytes.Buffer
-	if _, err := io.Copy(&buf, r); err != nil {
+	if err := auth.WriteReqMsg(sta.authzid, sta.username, &buf); err != nil {
 		return err
 	}
 	elem := stravaganza.NewBuilder("auth").

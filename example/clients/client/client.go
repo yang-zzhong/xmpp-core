@@ -3,7 +3,6 @@ package client
 import (
 	"crypto/tls"
 	"fmt"
-	"io"
 	"net"
 	"os"
 
@@ -23,9 +22,9 @@ func Start() {
 		return
 	}
 	attr := xmppcore.PartAttr{
-		JID:     xmppcore.JID{Domain: "localhost", Resource: "/hello-world", Username: "test"},
+		JID:     xmppcore.JID{Domain: "hello-world.im", Resource: "/hello-world", Username: "test"},
 		Version: "1.0",
-		Domain:  "localhost",
+		Domain:  "hello-world.im",
 	}
 	toAuth := xmppcore.NewScramToAuth("test", "123456", xmppcore.SM_SCRAM_SHA_256_PLUS, true)
 	sasl := xmppcore.NewClientSASLFeature()
@@ -35,11 +34,11 @@ func Start() {
 	client.WithFeature(xmppcore.NewClientTlsFeature(&tls.Config{InsecureSkipVerify: true}))
 	client.WithFeature(sasl)
 	client.WithFeature(xmppcore.NewClientBindFeature(&clientResourceBinder{}))
-	comp := xmppcore.NewClientCompressFeature()
-	comp.Support(xmppcore.ZLIB, func(rw io.ReadWriter) xmppcore.Compressor {
-		return xmppcore.NewCompZlib(rw)
-	})
-	client.WithFeature(comp)
+	// comp := xmppcore.NewClientCompressFeature()
+	// comp.Support(xmppcore.ZLIB, func(rw io.ReadWriter) xmppcore.Compressor {
+	// 	return xmppcore.NewCompZlib(rw)
+	// })
+	// client.WithFeature(comp)
 	client.Channel().SetLogger(logger)
 	if err := client.Run(); err != nil {
 		fmt.Printf("client error: %s\n", err.Error())

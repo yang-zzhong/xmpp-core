@@ -22,10 +22,20 @@ func CompressErrorElem(name string) stravaganza.Element {
 
 type CompressionFeature struct {
 	supported map[string]BuildCompressor
+	handled   bool
+	mandatory bool
 }
 
 func NewCompressFeature() *CompressionFeature {
-	return &CompressionFeature{make(map[string]BuildCompressor)}
+	return &CompressionFeature{supported: make(map[string]BuildCompressor), handled: false, mandatory: false}
+}
+
+func (cf *CompressionFeature) Mandatory() bool {
+	return cf.mandatory
+}
+
+func (cf *CompressionFeature) Handled() bool {
+	return cf.handled
 }
 
 func (cf *CompressionFeature) Elem() stravaganza.Element {
@@ -43,7 +53,7 @@ func (cf *CompressionFeature) Support(name string, build BuildCompressor) {
 }
 
 func (cf *CompressionFeature) Match(elem stravaganza.Element) bool {
-	return elem.Name() == "compress"
+	return elem.Name() == "compress" && elem.Attribute("xmlns") == nsBind
 }
 
 func (cf *CompressionFeature) Handle(elem stravaganza.Element, part Part) error {
@@ -57,8 +67,7 @@ func (cf *CompressionFeature) Handle(elem stravaganza.Element, part Part) error 
 	}
 	if err := part.Channel().SendElement(stravaganza.NewBuilder("compressed").
 		WithAttribute(stravaganza.Namespace, nsCompress).
-		Build(),
-	); err != nil {
+		Build()); err != nil {
 		return err
 	}
 	part.Conn().StartCompress(build)

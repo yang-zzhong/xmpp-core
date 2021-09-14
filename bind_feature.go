@@ -8,7 +8,9 @@ import (
 )
 
 type BindFeature struct {
-	rsb ResourceBinder
+	rsb       ResourceBinder
+	handled   bool
+	mandatory bool
 }
 
 type ResourceBinder interface {
@@ -42,8 +44,12 @@ func BindErrorElemFromError(id string, err error) stravaganza.Element {
 	return BindErrorElem(id, errTag, ss[0])
 }
 
-func NewBindFeature(rsb ResourceBinder) *BindFeature {
-	return &BindFeature{rsb: rsb}
+func NewBindFeature(rsb ResourceBinder, mandatory bool) *BindFeature {
+	return &BindFeature{rsb: rsb, handled: false, mandatory: mandatory}
+}
+
+func (bf *BindFeature) Mandatory() bool {
+	return bf.mandatory
 }
 
 func (bf *BindFeature) Elem() stravaganza.Element {
@@ -67,7 +73,12 @@ func (bf *BindFeature) Match(elem stravaganza.Element) bool {
 	return true
 }
 
+func (bf *BindFeature) Handled() bool {
+	return bf.handled
+}
+
 func (bf *BindFeature) Handle(elem stravaganza.Element, part Part) error {
+	bf.handled = true
 	id := elem.Attribute("id")
 	rsc, err := bf.rsb.BindResource(part, bf.resource(elem))
 	if err != nil {

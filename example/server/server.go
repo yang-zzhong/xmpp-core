@@ -119,19 +119,22 @@ func init() {
 
 func (s *Server) onConn(conn xmppcore.Conn, connFor xmppcore.ConnFor, connType xmppcore.ConnType) {
 	if connFor == xmppcore.ForC2S {
-		s.c2sHandler(conn)
+		s.c2sHandler(conn, connType)
 	} else if connFor == xmppcore.ForS2S {
-		s.s2sHandler(conn)
+		s.s2sHandler(conn, connType)
 	}
 }
 
-func (s *Server) c2sHandler(conn xmppcore.Conn) {
+func (s *Server) c2sHandler(conn xmppcore.Conn, connType xmppcore.ConnType) {
 	c2s := xmppcore.NewC2S(conn, s.config.Domain, s.logger)
 	c2s.WithSASLFeature(memoryAuthorized).
 		WithSASLSupport(xmppcore.SM_PLAIN, xmppcore.NewPlainAuth(memoryPlainAuthUserFetcher, md5.New))
-	if s.config.CertFile != "" && s.config.KeyFile != "" {
-		c2s.WithTLS(s.config.CertFile, s.config.KeyFile).
-			WithSASLSupport(xmppcore.SM_SCRAM_SHA_1_PLUS, xmppcore.NewScramAuth(memoryAuthUserFetcher, sha1.New, true)).
+
+	if s.config.CertFile != "" && s.config.KeyFile != "" || connType == xmppcore.TLSConn || connType == xmppcore.WSTLSConn {
+		if connType == xmppcore.TCPConn || connType == xmppcore.WSConn {
+			c2s.WithTLS(s.config.CertFile, s.config.KeyFile)
+		}
+		c2s.WithSASLSupport(xmppcore.SM_SCRAM_SHA_1_PLUS, xmppcore.NewScramAuth(memoryAuthUserFetcher, sha1.New, true)).
 			WithSASLSupport(xmppcore.SM_SCRAM_SHA_256_PLUS, xmppcore.NewScramAuth(memoryAuthUserFetcher, sha256.New, true)).
 			WithSASLSupport(xmppcore.SM_SCRAM_SHA_512_PLUS, xmppcore.NewScramAuth(memoryAuthUserFetcher, sha512.New, true))
 	} else {
@@ -148,7 +151,7 @@ func (s *Server) c2sHandler(conn xmppcore.Conn) {
 	}
 }
 
-func (s *Server) s2sHandler(conn xmppcore.Conn) {
+func (s *Server) s2sHandler(conn xmppcore.Conn, connType xmppcore.ConnType) {
 	s2s := xmppcore.NewS2S(conn, s.config.Domain, s.logger)
 	if s.config.CertFile != "" && s.config.KeyFile != "" {
 		s2s.WithTLS(s.config.CertFile, s.config.KeyFile)

@@ -26,6 +26,11 @@ type TcpConn struct {
 }
 
 func NewTcpConn(underlying net.Conn, isClient bool) *TcpConn {
+	_, isTcp := underlying.(*net.TCPConn)
+	_, isTls := underlying.(*tls.Conn)
+	if !isTcp && !isTls {
+		panic("not a tcp conn nor a tls conn")
+	}
 	return &TcpConn{underlying, nil, isClient}
 }
 

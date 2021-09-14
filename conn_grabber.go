@@ -2,8 +2,11 @@ package xmppcore
 
 import (
 	"context"
+	"crypto/tls"
+	"errors"
 	"net"
 	"net/http"
+	"sync"
 
 	"github.com/gorilla/websocket"
 )
@@ -34,14 +37,29 @@ type WsConnGrabber struct {
 	path     string
 	listenOn string
 
+	certFile, keyFile string
+
+	grabbing bool
+	m        sync.Mutex
+
 	srv *http.Server
 }
 
 func NewWsConnGrabber(listenOn string, path string, upgrader websocket.Upgrader, logger Logger) *WsConnGrabber {
 	return &WsConnGrabber{
 		upgrader: upgrader,
+		grabbing: false,
 		path:     path,
 		listenOn: listenOn, logger: logger}
+}
+
+func (wsc *WsConnGrabber) UpgradeToTls(certFile, keyFile string) error {
+	if wsc.grabbing {
+		return errors.New("can't update to tls within grabbing")
+	}
+	wsc.certFile = certFile
+	wsc.keyFile = keyFile
+	return nil
 }
 
 func (wsc *WsConnGrabber) Grab(connChan chan Conn) error {
@@ -62,8 +80,18 @@ func (wsc *WsConnGrabber) Grab(connChan chan Conn) error {
 		close(connChan)
 	})
 	go func() {
+		wsc.grabbing = true
+		defer func() {
+			wsc.grabbing = false
+		}()
 		wsc.logger.Printf(Info, "ws connection listen on %s for C2S\n", wsc.listenOn)
-		if err := wsc.srv.ListenAndServe(); err != nil {
+		var err error
+		if wsc.certFile != "" && wsc.keyFile != "" {
+			err = wsc.srv.ListenAndServeTLS(wsc.certFile, wsc.keyFile)
+		} else {
+			err = wsc.srv.ListenAndServe()
+		}
+		if err != nil {
 			wsc.logger.Printf(Info, "ws conn server close unexpected: %s\n", err.Error())
 			return
 		}
@@ -83,6 +111,9 @@ func (wsc *WsConnGrabber) For() ConnFor {
 }
 
 func (wsc *WsConnGrabber) Type() ConnType {
+	if wsc.certFile != "" && wsc.keyFile != "" {
+		return WSTLSConn
+	}
 	return WSConn
 }
 
@@ -90,6 +121,8 @@ type TcpConnGrabber struct {
 	listenOn string
 	connFor  ConnFor
 	logger   Logger
+	m        sync.Mutex
+	grabbing bool
 
 	keyFile  string
 	certFile string
@@ -102,18 +135,40 @@ func NewTcpConnGrabber(listenOn string, connFor ConnFor, logger Logger) *TcpConn
 	return &TcpConnGrabber{listenOn: listenOn, connFor: connFor, quit: make(chan bool), logger: logger}
 }
 
+func (tc *TcpConnGrabber) UpgradeToTls(certFile, keyFile string) error {
+	if tc.grabbing {
+		return errors.New("tcp conn grabber grabbing, can't upgrade to tls")
+	}
+	tc.certFile = certFile
+	tc.keyFile = keyFile
+	return nil
+}
+
 func (tc *TcpConnGrabber) ReplaceLogger(logger Logger) {
 	tc.logger = logger
 }
 
 func (tc *TcpConnGrabber) Grab(connChan chan Conn) error {
 	var err error
-	tc.ln, err = net.Listen("tcp", tc.listenOn)
+	if tc.certFile != "" && tc.keyFile != "" {
+		cert, err := tls.LoadX509KeyPair(tc.certFile, tc.keyFile)
+		if err != nil {
+			return err
+		}
+		config := tls.Config{Certificates: []tls.Certificate{cert}}
+		tc.ln, err = tls.Listen("tcp", tc.listenOn, &config)
+	} else {
+		tc.ln, err = net.Listen("tcp", tc.listenOn)
+	}
 	tc.logger.Printf(Info, "tcp connection Listen on %s for %s\n", tc.listenOn, tc.connFor)
 	if err != nil {
 		return err
 	}
 	go func() {
+		tc.grabbing = true
+		defer func() {
+			tc.grabbing = false
+		}()
 		for {
 			select {
 			case <-tc.quit:
@@ -124,9 +179,12 @@ func (tc *TcpConnGrabber) Grab(connChan chan Conn) error {
 				if err != nil {
 					continue
 				}
+				if conn == nil {
+					close(connChan)
+					return
+				}
 				tc.logger.Printf(Info, "comming a tcp connection from %s on %s\n", conn.RemoteAddr().String(), tc.listenOn)
-				c, _ := conn.(*net.TCPConn)
-				connChan <- NewTcpConn(c, false)
+				connChan <- NewTcpConn(conn, false)
 			}
 		}
 	}()
@@ -143,5 +201,8 @@ func (tc *TcpConnGrabber) For() ConnFor {
 }
 
 func (tc *TcpConnGrabber) Type() ConnType {
+	if tc.certFile != "" && tc.keyFile != "" {
+		return TLSConn
+	}
 	return TCPConn
 }

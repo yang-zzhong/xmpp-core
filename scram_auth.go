@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"hash"
-	"io"
 	"strings"
 
 	"github.com/jackal-xmpp/stravaganza/v2"
@@ -55,17 +54,13 @@ func (scram *ScramAuth) Auth(mechanism, authInfo string, part Part) (username st
 		auth = scramauth.NewServerScramAuth(scram.hashBuild, scramauth.None, []byte{})
 	}
 	r := bytes.NewBuffer([]byte(authInfo))
-	cr, err := auth.Challenge(r, func(username []byte) ([]byte, int, error) {
+	var buf bytes.Buffer
+	if err := auth.WriteChallengeMsg(r, func(username []byte) ([]byte, int, error) {
 		if err := scram.initUser(username); err != nil {
 			return nil, 0, err
 		}
 		return []byte(scram.user.Salt()), scram.user.IterationCount(), nil
-	})
-	if err != nil {
-		return "", err
-	}
-	var buf bytes.Buffer
-	if _, err := io.Copy(&buf, cr); err != nil {
+	}, &buf); err != nil {
 		return "", err
 	}
 	msg := stravaganza.NewBuilder("challenge").
@@ -114,16 +109,11 @@ func (scram *ScramAuth) verifyPassword(auth *scramauth.ServerScramAuth, part Par
 		return SaslFailureError(SFTemporaryAuthFailure, err.Error())
 	}
 	r := bytes.NewBuffer([]byte((*msg).Text()))
-	fmt.Printf("client response: %s\n", r.String())
 	if err := auth.Verify(r, []byte(password)); err != nil {
 		return SaslFailureError(SFTemporaryAuthFailure, err.Error())
 	}
-	sr, err := auth.Signature(r, []byte(password))
-	if err != nil {
-		return SaslFailureError(SFTemporaryAuthFailure, err.Error())
-	}
 	var buf bytes.Buffer
-	if _, err := io.Copy(&buf, sr); err != nil {
+	if err := auth.WriteSignatureMsg(r, []byte(password), &buf); err != nil {
 		return SaslFailureError(SFTemporaryAuthFailure, err.Error())
 	}
 	return part.Channel().SendElement(stravaganza.NewBuilder("success").

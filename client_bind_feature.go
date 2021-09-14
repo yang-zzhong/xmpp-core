@@ -2,7 +2,6 @@ package xmppcore
 
 import (
 	"errors"
-	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/jackal-xmpp/stravaganza/v2"
@@ -33,28 +32,24 @@ func (cbf *ClientBindFeature) Handle(elem stravaganza.Element, part Part) error 
 		part.Logger().Printf(Error, "send bind message error: %s", err.Error())
 		return err
 	}
-	part.WithElemHandler(NewBindResultHandler(cbf))
-	return nil
-}
-
-type BindResultHandler struct {
-	bf *ClientBindFeature
-}
-
-func NewBindResultHandler(cbf *ClientBindFeature) *BindResultHandler {
-	return &BindResultHandler{cbf}
-}
-
-func (brh *BindResultHandler) Match(elem stravaganza.Element) bool {
-	return elem.Name() == "iq" && elem.Attribute("id") == brh.bf.id
-}
-
-func (brh *BindResultHandler) Handle(elem stravaganza.Element, part Part) error {
+	if err := part.Channel().NextElement(&elem); err != nil {
+		return err
+	}
 	if elem.Attribute("type") == "error" {
-		// handle error
+		return errors.New("server bind error")
+	}
+	if elem.Name() != "iq" || elem.Attribute("id") != cbf.id || elem.Attribute("type") != "result" {
+		return errors.New("not a bind result")
 	}
 	bind := elem.Child("bind")
-	fmt.Printf("%s\n", bind.GoString())
-	brh.bf.rb.BindResource(part, "")
+	if bind == nil {
+		return errors.New("bind result error")
+	}
+	jid := bind.Child("jid")
+	if jid == nil {
+		return errors.New("bind result error")
+	}
+	cbf.rb.BindResource(part, jid.Text())
+
 	return nil
 }

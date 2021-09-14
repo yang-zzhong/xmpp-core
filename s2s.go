@@ -11,7 +11,7 @@ func NewS2S(conn Conn, domain string, logger Logger) *S2S {
 }
 
 func (s2s *S2S) WithTLS(certFile, keyFile string) *S2S {
-	s2s.tls = NewTlsFeature(certFile, keyFile)
+	s2s.tls = NewTlsFeature(certFile, keyFile, true)
 	return s2s
 }
 
@@ -32,10 +32,10 @@ func (s2s *S2S) WithElemHandler(handler ElemHandler) *S2S {
 
 func (s2s *S2S) HandleStandFeature() {
 	if s2s.tls != nil {
-		s2s.part.WithRequiredFeature(s2s.tls)
+		s2s.part.WithFeature(s2s.tls)
 	}
 	if s2s.sasl != nil {
-		s2s.part.WithRequiredFeature(s2s.sasl)
+		s2s.part.WithFeature(s2s.sasl)
 	}
 }
 

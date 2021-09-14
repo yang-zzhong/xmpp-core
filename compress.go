@@ -3,7 +3,6 @@ package xmppcore
 import (
 	"compress/zlib"
 	"io"
-	"sync"
 )
 
 type BuildCompressor func(io.ReadWriter) Compressor
@@ -14,25 +13,20 @@ type Compressor interface {
 
 type CompZlib struct {
 	rw io.ReadWriter
-
-	mt sync.Mutex
 }
 
 func NewCompZlib(rw io.ReadWriter) *CompZlib {
-	return &CompZlib{rw, sync.Mutex{}}
+	return &CompZlib{rw: rw}
 }
 
 func (comp *CompZlib) Write(b []byte) (int, error) {
-	comp.mt.Lock()
-	defer comp.mt.Unlock()
 	zw := zlib.NewWriter(comp.rw)
+	zw.Flush()
 	defer zw.Close()
 	return zw.Write(b)
 }
 
 func (comp *CompZlib) Read(b []byte) (int, error) {
-	comp.mt.Lock()
-	defer comp.mt.Unlock()
 	zr, err := zlib.NewReader(comp.rw)
 	if err != nil {
 		return 0, err

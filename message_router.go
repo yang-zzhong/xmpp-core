@@ -40,9 +40,9 @@ func (msg *MessageRouter) Handle(elem stravaganza.Element, part Part) error {
 	if msg.hub == nil {
 		msg.hub = NewMsgHub(part)
 	}
-	conn, err := net.Dial("tcp", jid.Domain)
+	conn, err := net.Dial("tcp", jid.Domain+":5223")
 	if err != nil {
-		// error
+		return err
 	}
 	mp := msg.outClient(conn, &jid, part)
 	return mp.Channel().SendElement(elem)

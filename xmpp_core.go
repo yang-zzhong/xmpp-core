@@ -15,13 +15,11 @@ var (
 	ErrClientIgnoredTheFeature = errors.New("client ignored the feature")
 )
 
-type OptionalFeature interface {
+type Feature interface {
 	Elem() stravaganza.Element
+	Mandatory() bool
+	Handled() bool
 	ElemHandler
-}
-
-type RequiredFeature interface {
-	Resolve(Part) error
 }
 
 type ElemHandler interface {
@@ -99,6 +97,7 @@ type PartAttr struct {
 	Domain  string
 	Version string
 	Xmlns   string
+	XmlLang string
 	OpenTag bool
 }
 
@@ -129,6 +128,12 @@ func (attr *PartAttr) head(elem *xml.StartElement, from, to string) {
 	if to != "" {
 		eattr = append(eattr, xml.Attr{Name: xml.Name{Local: "to"}, Value: to})
 	}
+	if attr.XmlLang != "" {
+		eattr = append(eattr, xml.Attr{Name: xml.Name{Local: "lang", Space: "xml"}, Value: attr.XmlLang})
+	}
+	// if attr.Xmlns != "" {
+	// 	eattr = append(eattr, xml.Attr{Name: xml.Name{Local: "xmlns"}, Value: attr.XmlLang})
+	// }
 	if !attr.OpenTag {
 		*elem = xml.StartElement{
 			Name: xml.Name{Space: nsStream, Local: "stream"},
@@ -161,6 +166,8 @@ func (sa *PartAttr) ParseToServer(elem xml.StartElement) error {
 			sa.Version = attr.Value
 		} else if attr.Name.Local == "id" && attr.Value != "" {
 			sa.ID = attr.Value
+		} else if attr.Name.Local == "lang" {
+			sa.XmlLang = attr.Value
 		}
 	}
 	return nil
@@ -193,25 +200,23 @@ func (sa *PartAttr) ParseToClient(elem xml.StartElement) error {
 }
 
 type XPart struct {
-	channel          Channel
-	requiredFeatures []RequiredFeature
-	optionalFeatures []OptionalFeature
-	logger           Logger
-	conn             Conn
-	attr             PartAttr
+	channel  Channel
+	features []Feature
+	logger   Logger
+	conn     Conn
+	attr     PartAttr
 	*ElemRunner
 }
 
 func NewXPart(conn Conn, domain string, logger Logger) *XPart {
 	channel := NewXChannel(conn, true)
 	return &XPart{
-		channel:          channel,
-		requiredFeatures: []RequiredFeature{},
-		optionalFeatures: []OptionalFeature{},
-		logger:           logger,
-		conn:             conn,
-		attr:             PartAttr{Domain: domain, ID: uuid.New().String()},
-		ElemRunner:       NewElemRunner(channel),
+		channel:    channel,
+		features:   []Feature{},
+		logger:     logger,
+		conn:       conn,
+		attr:       PartAttr{Domain: domain, ID: uuid.New().String()},
+		ElemRunner: NewElemRunner(channel),
 	}
 }
 
@@ -227,12 +232,8 @@ func (part *XPart) Channel() Channel {
 	return part.channel
 }
 
-func (part *XPart) WithRequiredFeature(f RequiredFeature) {
-	part.requiredFeatures = append(part.requiredFeatures, f)
-}
-
-func (part *XPart) WithOptionalFeature(f OptionalFeature) {
-	part.optionalFeatures = append(part.optionalFeatures, f)
+func (part *XPart) WithFeature(f Feature) {
+	part.features = append(part.features, f)
 }
 
 func (part *XPart) Run() error {
@@ -253,43 +254,104 @@ func (part *XPart) handleElemHandlers() error {
 	return <-errChan
 }
 
+//                 +---------------------+
+//                 | open TCP connection |
+//                 +---------------------+
+//                            |
+//                            v
+//                     +---------------+
+//                     | send initial  |<-------------------------+
+//                     | stream header |                          ^
+//                     +---------------+                          |
+//                            |                                   |
+//                            v                                   |
+//                    +------------------+                        |
+//                    | receive response |                        |
+//                    | stream header    |                        |
+//                    +------------------+                        |
+//                            |                                   |
+//                            v                                   |
+//                     +----------------+                         |
+//                     | receive stream |                         |
+// +------------------>| features       |                         |
+// ^   {OPTIONAL}      +----------------+                         |
+// |                          |                                   |
+// |                          v                                   |
+// |       +<-----------------+                                   |
+// |       |                                                      |
+// |    {empty?} ----> {all voluntary?} ----> {some mandatory?}   |
+// |       |      no          |          no         |             |
+// |       | yes              | yes                 | yes         |
+// |       |                  v                     v             |
+// |       |           +---------------+    +----------------+    |
+// |       |           | MAY negotiate |    | MUST negotiate |    |
+// |       |           | any or none   |    | one feature    |    |
+// |       |           +---------------+    +----------------+    |
+// |       v                  |                     |             |
+// |   +---------+            v                     |             |
+// |   |  DONE   |<----- {negotiate?}               |             |
+// |   +---------+   no       |                     |             |
+// |                     yes  |                     |             |
+// |                          v                     v             |
+// |                          +--------->+<---------+             |
+// |                                     |                        |
+// |                                     v                        |
+// +<-------------------------- {restart mandatory?} ------------>+
+//              no                                     yes
+
 func (part *XPart) handleFeatures() error {
-	reopened := false
-	for _, f := range part.requiredFeatures {
-		if !reopened {
-			if err := part.reopen(); err != nil {
-				return err
-			}
+	for {
+		f := part.nextUnresolvedMandatoryFeature()
+		if f == nil {
+			break
 		}
-		if err := f.Resolve(part); err != nil {
-			if err == ErrClientIgnoredTheFeature {
-				part.channel.Open(part.Attr())
-				reopened = true
-				continue
-			}
-			part.Logger().Printf(Error, "a error from part feature: %s", err.Error())
+		if err := part.reopen(); err != nil {
 			return err
 		}
-		reopened = false
+		if err := part.notifyFeatures(f.Elem()); err != nil {
+			return err
+		}
+		var elem stravaganza.Element
+		if err := part.Channel().NextElement(&elem); err != nil {
+			return err
+		}
+		if !f.Match(elem) {
+			return errors.New("client error")
+		}
+		if err := f.Handle(elem, part); err != nil {
+			return err
+		}
 	}
-	part.reopen()
-	if err := part.handleUnrequiredFeature(); err != nil {
-		part.Logger().Printf(Error, "a error from part unrequired features: %s", err.Error())
+	return part.handleOptionalFeatures()
+}
+
+func (part *XPart) nextUnresolvedMandatoryFeature() Feature {
+	for _, feature := range part.features {
+		if feature.Mandatory() && !feature.Handled() {
+			return feature
+		}
 	}
 	return nil
 }
 
-func (part *XPart) handleUnrequiredFeature() error {
-	if len(part.optionalFeatures) == 0 {
-		return part.channel.SendElement(stravaganza.NewBuilder("features").Build())
-	}
-	es := []stravaganza.Element{}
-	for _, f := range part.optionalFeatures {
-		es = append(es, f.Elem())
+func (part *XPart) handleOptionalFeatures() error {
+	elems := []stravaganza.Element{}
+	for _, f := range part.features {
+		if f.Handled() || f.Mandatory() {
+			continue
+		}
+		elems = append(elems, f.Elem())
 		part.WithElemHandler(f)
 	}
-	fs := stravaganza.NewBuilder("features").WithChildren(es...).Build()
-	return part.channel.SendElement(fs)
+	if err := part.reopen(); err != nil {
+		return err
+	}
+	part.notifyFeatures(elems...)
+	return nil
+}
+
+func (part *XPart) notifyFeatures(elems ...stravaganza.Element) error {
+	return part.Channel().SendElement(stravaganza.NewBuilder("features").WithChildren(elems...).Build())
 }
 
 func (part *XPart) reopen() error {

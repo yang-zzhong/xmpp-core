@@ -15,7 +15,7 @@ func NewC2S(conn Conn, domain string, logger Logger) *C2S {
 }
 
 func (c2s *C2S) WithTLS(certFile, keyFile string) *C2S {
-	c2s.tls = NewTlsFeature(certFile, keyFile)
+	c2s.tls = NewTlsFeature(certFile, keyFile, true)
 	return c2s
 }
 
@@ -30,7 +30,7 @@ func (c2s *C2S) WithSASLSupport(name string, auth Auth) *C2S {
 }
 
 func (c2s *C2S) WithBind(rb ResourceBinder) *C2S {
-	c2s.bind = NewBindFeature(rb)
+	c2s.bind = NewBindFeature(rb, false)
 	return c2s
 }
 
@@ -53,16 +53,16 @@ func (c2s *C2S) WithElemHandler(handler ElemHandler) *C2S {
 
 func (c2s *C2S) HandleStandFeature() {
 	if c2s.tls != nil {
-		c2s.part.WithRequiredFeature(c2s.tls)
+		c2s.part.WithFeature(c2s.tls)
 	}
 	if c2s.sasl != nil {
-		c2s.part.WithRequiredFeature(c2s.sasl)
+		c2s.part.WithFeature(c2s.sasl)
 	}
 	if c2s.bind != nil {
-		c2s.part.WithOptionalFeature(c2s.bind)
+		c2s.part.WithFeature(c2s.bind)
 	}
 	if c2s.compress != nil {
-		c2s.part.WithOptionalFeature(c2s.compress)
+		c2s.part.WithFeature(c2s.compress)
 	}
 }
 

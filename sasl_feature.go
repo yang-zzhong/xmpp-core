@@ -113,6 +113,8 @@ const (
 type SASLFeature struct {
 	supported  map[string]Auth
 	authorized Authorized
+	handled    bool
+	mandatory  bool
 }
 
 func NewSASLFeature(authorized Authorized) *SASLFeature {
@@ -122,14 +124,8 @@ func NewSASLFeature(authorized Authorized) *SASLFeature {
 	return mf
 }
 
-func (mf *SASLFeature) notifySupported(s Sender) error {
-	if len(mf.supported) == 0 {
-		return nil
-	}
-	msg := stravaganza.NewBuilder("features").
-		WithChild(mf.Elem()).Build()
-
-	return s.SendElement(msg)
+func (mf *SASLFeature) Mandatory() bool {
+	return true
 }
 
 func (mf *SASLFeature) Elem() stravaganza.Element {
@@ -152,14 +148,14 @@ func (mf *SASLFeature) Unsupport(name string) *SASLFeature {
 	return mf
 }
 
-func (mf *SASLFeature) Resolve(part Part) error {
-	if err := mf.notifySupported(part.Channel()); err != nil {
-		return err
-	}
-	as, mech, err := mf.clientRequest(part)
-	if err != nil {
-		return err
-	}
+func (mf *SASLFeature) Match(elem stravaganza.Element) bool {
+	return elem.Name() == "auth" && elem.Attribute("xmlns") == nsSASL
+}
+
+func (mf *SASLFeature) Handle(elem stravaganza.Element, part Part) error {
+	mf.handled = true
+	as := elem.Text()
+	mech := elem.Attribute("mechanism")
 	auth, ok := mf.supported[mech]
 	if !ok {
 		supported := []string{}
@@ -181,20 +177,8 @@ func (mf *SASLFeature) Resolve(part Part) error {
 	return nil
 }
 
-func (mf *SASLFeature) clientRequest(part Part) (as string, mechanism string, err error) {
-	elem, e := mf.nextElement(part.Channel())
-	if e != nil {
-		err = e
-		return
-	}
-	if elem.Name() != "auth" {
-		err = SaslFailureError(SFIncorrectEncoding, "not a auth elem from client")
-		part.Channel().SendElement(SaslFailureElemFromError(err))
-		return
-	}
-	as = elem.Text()
-	mechanism = elem.Attribute("mechanism")
-	return
+func (mf *SASLFeature) Handled() bool {
+	return mf.handled
 }
 
 func (mf *SASLFeature) nextElement(s Channel) (stravaganza.Element, error) {

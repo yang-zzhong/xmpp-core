@@ -69,33 +69,94 @@ func (od *ClientPart) Stop() {
 	od.Quit()
 }
 
+//                 +---------------------+
+//                 | open TCP connection |
+//                 +---------------------+
+//                            |
+//                            v
+//                     +---------------+
+//                     | send initial  |<-------------------------+
+//                     | stream header |                          ^
+//                     +---------------+                          |
+//                            |                                   |
+//                            v                                   |
+//                    +------------------+                        |
+//                    | receive response |                        |
+//                    | stream header    |                        |
+//                    +------------------+                        |
+//                            |                                   |
+//                            v                                   |
+//                     +----------------+                         |
+//                     | receive stream |                         |
+// +------------------>| features       |                         |
+// ^   {OPTIONAL}      +----------------+                         |
+// |                          |                                   |
+// |                          v                                   |
+// |       +<-----------------+                                   |
+// |       |                                                      |
+// |    {empty?} ----> {all voluntary?} ----> {some mandatory?}   |
+// |       |      no          |          no         |             |
+// |       | yes              | yes                 | yes         |
+// |       |                  v                     v             |
+// |       |           +---------------+    +----------------+    |
+// |       |           | MAY negotiate |    | MUST negotiate |    |
+// |       |           | any or none   |    | one feature    |    |
+// |       |           +---------------+    +----------------+    |
+// |       v                  |                     |             |
+// |   +---------+            v                     |             |
+// |   |  DONE   |<----- {negotiate?}               |             |
+// |   +---------+   no       |                     |             |
+// |                     yes  |                     |             |
+// |                          v                     v             |
+// |                          +--------->+<---------+             |
+// |                                     |                        |
+// |                                     v                        |
+// +<-------------------------- {restart mandatory?} ------------>+
+//              no                                     yes
 func (od *ClientPart) handleFeatures() error {
 	for {
 		features, err := od.serverFeatures()
-		if err != nil {
+		if err != nil || len(features) == 0 {
 			return err
-		}
-		if len(features) == 0 {
-			return nil
 		}
 		for _, f := range features {
 			handled := false
 			for _, h := range od.features {
 				if h.Match(f) {
-					h.Handle(f, od)
 					handled = true
+					if err := h.Handle(f, od); err != nil {
+						return err
+					}
 					break
 				}
 			}
-			if !handled {
-				err := errors.New(fmt.Sprintf("feature [%s] not support", f.GoString()))
-				od.logger.Printf(Error, err.Error())
-				od.channel.Close()
-				return err
-				// no handler
+			if !handled && od.isMandatory(f) {
+				return errors.New(fmt.Sprintf("feature %s not handled", f.Name()))
 			}
 		}
+		if !od.containMandatories(features) {
+			return nil
+		}
 	}
+}
+
+func (od *ClientPart) containMandatories(elems []stravaganza.Element) bool {
+	for _, elem := range elems {
+		if od.isMandatory(elem) {
+			return true
+		}
+	}
+	return false
+}
+
+func (od *ClientPart) isMandatory(elem stravaganza.Element) bool {
+	if elem.Name() == "starttls" || elem.Name() == "bind" {
+		return elem.Child("required") != nil
+	}
+	if elem.Name() == "compression" {
+		return false
+	}
+	return true
 }
 
 func (od *ClientPart) serverFeatures() (res []stravaganza.Element, err error) {

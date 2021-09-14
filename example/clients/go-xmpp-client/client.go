@@ -19,10 +19,10 @@ import (
 func Start() {
 	config := xmpp.Config{
 		TransportConfiguration: xmpp.TransportConfiguration{
-			Address:   "localhost:5222",
+			Address:   "hello-world.im:5222",
 			TLSConfig: &tls.Config{InsecureSkipVerify: true},
 		},
-		Jid:          "test@localhost",
+		Jid:          "test@hello-world.im",
 		Credential:   xmpp.Password("123456"),
 		StreamLogger: os.Stdout,
 		Insecure:     true,
