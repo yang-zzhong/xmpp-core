@@ -58,11 +58,11 @@ func (c2s *C2S) HandleStandFeature() {
 	if c2s.sasl != nil {
 		c2s.part.WithFeature(c2s.sasl)
 	}
-	if c2s.bind != nil {
-		c2s.part.WithFeature(c2s.bind)
-	}
 	if c2s.compress != nil {
 		c2s.part.WithFeature(c2s.compress)
+	}
+	if c2s.bind != nil {
+		c2s.part.WithFeature(c2s.bind)
 	}
 }
 

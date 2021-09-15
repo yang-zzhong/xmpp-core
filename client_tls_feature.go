@@ -8,10 +8,11 @@ import (
 
 type ClientTlsFeature struct {
 	conf *tls.Config
+	*IDAble
 }
 
 func NewClientTlsFeature(conf *tls.Config) *ClientTlsFeature {
-	return &ClientTlsFeature{conf: conf}
+	return &ClientTlsFeature{conf: conf, IDAble: NewIDAble()}
 }
 
 func (ctf *ClientTlsFeature) Match(elem stravaganza.Element) bool {

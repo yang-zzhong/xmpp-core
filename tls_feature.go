@@ -7,10 +7,12 @@ import (
 )
 
 type TlsFeature struct {
-	certFile string
-	keyFile  string
+	certFile  string
+	keyFile   string
+	mandatory bool
 
 	handled bool
+	*IDAble
 }
 
 func TlsFailureElem() stravaganza.Element {
@@ -22,7 +24,12 @@ const (
 )
 
 func NewTlsFeature(certFile, keyFile string, mandatory bool) *TlsFeature {
-	return &TlsFeature{certFile, keyFile, false}
+	return &TlsFeature{
+		certFile:  certFile,
+		keyFile:   keyFile,
+		mandatory: mandatory,
+		handled:   false,
+		IDAble:    NewIDAble()}
 }
 
 func (tf *TlsFeature) Elem() stravaganza.Element {

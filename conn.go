@@ -78,7 +78,7 @@ func (conn *TcpConn) BindTlsUnique(w io.Writer) error {
 		if cs.Version < tls.VersionTLS13 {
 			return ErrBindTlsUniqueNotSupported
 		}
-		w.Write([]byte(c.ConnectionState().TLSUnique))
+		w.Write([]byte(cs.TLSUnique))
 		return nil
 	}
 	return ErrBindTlsUniqueNotSupported

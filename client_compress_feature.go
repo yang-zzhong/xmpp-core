@@ -6,10 +6,11 @@ import (
 
 type ClientCompressFeature struct {
 	supported map[string]BuildCompressor
+	*IDAble
 }
 
 func NewClientCompressFeature() *ClientCompressFeature {
-	return &ClientCompressFeature{make(map[string]BuildCompressor)}
+	return &ClientCompressFeature{supported: make(map[string]BuildCompressor), IDAble: NewIDAble()}
 }
 
 func (ccf *ClientCompressFeature) Support(name string, b BuildCompressor) {

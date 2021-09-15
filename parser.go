@@ -1,6 +1,7 @@
 package xmppcore
 
 import (
+	"bytes"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -13,6 +14,7 @@ const rootElementIndex = -1
 
 const (
 	streamName = "stream"
+	openName   = "open"
 )
 
 // ParsingMode defines the way in which special parsed element
@@ -29,6 +31,8 @@ const (
 
 // ErrTooLargeStanza will be returned Parse when the size of the incoming stanza is too large.
 var ErrTooLargeStanza = errors.New("parser: too large stanza")
+
+var ErrUnexpectedOpenHeader = errors.New("parser: unexpected open header")
 
 // ErrStreamClosedByPeer will be returned by Parse when stream closed element is parsed.
 var ErrStreamClosedByPeer = errors.New("parser: stream closed by peer")
@@ -58,30 +62,38 @@ func NewParser(reader io.Reader, maxStanzaSize int) *Parser {
 	}
 }
 
-// Parse parses next available XML element from reader.
-func (p *Parser) Parse() (stravaganza.Element, error) {
-	t, err := p.dec.RawToken()
+func (p *Parser) NextElement() (stravaganza.Element, error) {
+	i, err := p.Next()
 	if err != nil {
 		return nil, err
 	}
+	if _, ok := i.(xml.StartElement); ok {
+		return nil, ErrUnexpectedOpenHeader
+	}
+	return i.(stravaganza.Element), nil
+}
+
+// Parse parses next available XML element from reader.
+func (p *Parser) Next() (interface{}, error) {
 	for {
+		t, err := p.dec.Token()
+		if err != nil {
+			return nil, err
+		}
 		// check max stanza size limit
 		off := p.dec.InputOffset()
 		if p.maxStanzaSize > 0 && off-p.lastOffset > p.maxStanzaSize {
 			return nil, ErrTooLargeStanza
 		}
 		switch t1 := t.(type) {
-		case xml.ProcInst:
-			return nil, ErrNoElement
 		case xml.StartElement:
-			p.startElement(t1)
-			if p.mode == SocketStream && t1.Name.Local == streamName && t1.Name.Space == streamName {
-				if err := p.closeElement(xmlName(t1.Name.Space, t1.Name.Local)); err != nil {
-					return nil, err
-				}
-				goto done
+			// got <stream>/<open>
+			if p.mode == SocketStream && (t1.Name.Local == streamName || t1.Name.Local == openName) {
+				p.lastOffset = p.dec.InputOffset()
+				p.nextElement = nil
+				return t1, nil
 			}
-
+			p.startElement(t1)
 		case xml.CharData:
 			if !p.inElement {
 				return nil, ErrNoElement
@@ -99,10 +111,6 @@ func (p *Parser) Parse() (stravaganza.Element, error) {
 				goto done
 			}
 		}
-		t, err = p.dec.RawToken()
-		if err != nil {
-			return nil, err
-		}
 	}
 
 done:
@@ -113,8 +121,16 @@ done:
 	return elem, nil
 }
 
+func (p *Parser) logToken(token xml.Token) {
+	var buf bytes.Buffer
+	en := xml.NewEncoder(&buf)
+	en.EncodeToken(token)
+	en.Flush()
+	fmt.Printf("token: %s\n", buf.String())
+}
+
 func (p *Parser) startElement(t xml.StartElement) {
-	name := xmlName(t.Name.Space, t.Name.Local)
+	name := t.Name.Local
 
 	var attrs []stravaganza.Attribute
 	for _, a := range t.Attr {
@@ -159,9 +175,6 @@ func (p *Parser) closeElement(name string) error {
 }
 
 func xmlName(space, local string) string {
-	if len(space) > 0 {
-		return fmt.Sprintf("%s:%s", space, local)
-	}
 	return local
 }
 

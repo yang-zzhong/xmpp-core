@@ -1,8 +1,10 @@
 package xmppcore
 
 import (
+	"crypto/tls"
 	"io"
 	"net"
+	"time"
 
 	"github.com/jackal-xmpp/stravaganza/v2"
 )
@@ -14,10 +16,11 @@ type PartFinder interface {
 type MessageRouter struct {
 	hub    *MsgHub
 	finder PartFinder
+	*IDAble
 }
 
 func NewMessageRouter(finder PartFinder) *MessageRouter {
-	return &MessageRouter{finder: finder}
+	return &MessageRouter{finder: finder, IDAble: NewIDAble()}
 }
 
 func (msg *MessageRouter) Match(elem stravaganza.Element) bool {
@@ -50,7 +53,8 @@ func (msg *MessageRouter) Handle(elem stravaganza.Element, part Part) error {
 
 func (msg *MessageRouter) outClient(conn net.Conn, jid *JID, c2s Part) Part {
 	part := NewClientPart(NewTcpConn(conn, true), c2s.Logger(), &PartAttr{JID: *jid, Domain: c2s.Attr().Domain})
-	part.WithFeature(&ClientTlsFeature{})
+	part.Channel().SetLogger(c2s.Logger())
+	part.WithFeature(&ClientTlsFeature{conf: &tls.Config{InsecureSkipVerify: true}})
 	ccf := NewClientCompressFeature()
 	ccf.Support(ZLIB, func(rw io.ReadWriter) Compressor {
 		return NewCompZlib(rw)
@@ -59,6 +63,7 @@ func (msg *MessageRouter) outClient(conn net.Conn, jid *JID, c2s Part) Part {
 	go func() {
 		part.Run()
 	}()
+	time.Sleep(time.Second)
 	part.WithElemHandler(msg.hub)
 	msg.hub.AddRemote(jid.Domain, part)
 	return part
@@ -67,10 +72,11 @@ func (msg *MessageRouter) outClient(conn net.Conn, jid *JID, c2s Part) Part {
 type MsgHub struct {
 	c2s Part
 	out map[string]Part
+	*IDAble
 }
 
 func NewMsgHub(c2s Part) *MsgHub {
-	return &MsgHub{c2s: c2s, out: make(map[string]Part)}
+	return &MsgHub{c2s: c2s, out: make(map[string]Part), IDAble: NewIDAble()}
 }
 
 func (msgHub *MsgHub) Match(_ stravaganza.Element) bool {

@@ -24,10 +24,11 @@ type CompressionFeature struct {
 	supported map[string]BuildCompressor
 	handled   bool
 	mandatory bool
+	*IDAble
 }
 
 func NewCompressFeature() *CompressionFeature {
-	return &CompressionFeature{supported: make(map[string]BuildCompressor), handled: false, mandatory: false}
+	return &CompressionFeature{supported: make(map[string]BuildCompressor), handled: false, mandatory: false, IDAble: NewIDAble()}
 }
 
 func (cf *CompressionFeature) Mandatory() bool {

@@ -6,10 +6,11 @@ import (
 
 type ClientSASLFeature struct {
 	supports map[string]ToAuth
+	*IDAble
 }
 
 func NewClientSASLFeature() *ClientSASLFeature {
-	return &ClientSASLFeature{supports: make(map[string]ToAuth)}
+	return &ClientSASLFeature{supports: make(map[string]ToAuth), IDAble: NewIDAble()}
 }
 
 type ToAuth interface {

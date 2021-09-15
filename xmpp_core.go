@@ -13,6 +13,7 @@ var (
 	ErrOnNextTokenTimeout      = errors.New("get next token timeout")
 	ErrOnNextElementnTimeout   = errors.New("get next element timeout")
 	ErrClientIgnoredTheFeature = errors.New("client ignored the feature")
+	ErrUnhandledElement        = errors.New("unhandled element")
 )
 
 type Feature interface {
@@ -23,8 +24,21 @@ type Feature interface {
 }
 
 type ElemHandler interface {
+	ID() string
 	Match(stravaganza.Element) bool
 	Handle(elem stravaganza.Element, part Part) error
+}
+
+type IDAble struct {
+	id string
+}
+
+func NewIDAble() *IDAble {
+	return &IDAble{id: uuid.New().String()}
+}
+
+func (idable *IDAble) ID() string {
+	return idable.id
 }
 
 type Part interface {
@@ -36,11 +50,14 @@ type Part interface {
 	Conn() Conn
 	Run() error
 	Stop()
+	handleFeatures(header xml.StartElement) error
 }
 
 type ElemRunner struct {
 	channel      Channel
 	elemHandlers []ElemHandler
+	handleLimit  int
+	handled      int
 	quitChan     chan bool
 	quit         bool
 }
@@ -48,17 +65,28 @@ type ElemRunner struct {
 func NewElemRunner(channel Channel) *ElemRunner {
 	return &ElemRunner{
 		channel:      channel,
+		handleLimit:  -1,
+		handled:      0,
 		elemHandlers: []ElemHandler{},
 		quit:         false,
 	}
 }
 
 func (er *ElemRunner) WithElemHandler(handler ElemHandler) {
+	for _, h := range er.elemHandlers {
+		if h.ID() == handler.ID() {
+			return
+		}
+	}
 	er.elemHandlers = append(er.elemHandlers, handler)
 }
 
 func (er *ElemRunner) Running() bool {
 	return !er.quit
+}
+
+func (er *ElemRunner) SetHandleLimit(limit int) {
+	er.handleLimit = limit
 }
 
 func (er *ElemRunner) Quit() {
@@ -69,8 +97,8 @@ func (er *ElemRunner) Quit() {
 func (er *ElemRunner) Run(part Part, errChan chan error) {
 	go func() {
 		for {
-			var elem stravaganza.Element
-			if err := er.channel.NextElement(&elem); err != nil {
+			i, err := er.channel.Next()
+			if err != nil {
 				if er.quit == true {
 					errChan <- nil
 					return
@@ -79,13 +107,28 @@ func (er *ElemRunner) Run(part Part, errChan chan error) {
 				errChan <- err
 				return
 			}
-			for _, handler := range er.elemHandlers {
-				if handler.Match(elem) {
-					if err := handler.Handle(elem, part); err != nil {
-						part.Logger().Printf(Error, "a error occured from part instance [%s] message handler: %s", part.ID(), err.Error())
-						errChan <- err
+			if header, ok := i.(xml.StartElement); ok {
+				if err := part.handleFeatures(header); err != nil {
+					errChan <- err
+					return
+				}
+				continue
+			} else {
+				elem := i.(stravaganza.Element)
+				for _, handler := range er.elemHandlers {
+					if handler.Match(elem) {
+						er.handled = er.handled + 1
+						if err := handler.Handle(elem, part); err != nil {
+							part.Logger().Printf(Error, "a error occured from part instance [%s] message handler: %s", part.ID(), err.Error())
+							errChan <- err
+						}
 					}
 				}
+			}
+			if er.handleLimit > 0 && er.handled >= er.handleLimit {
+				errChan <- nil
+				close(errChan)
+				return
 			}
 		}
 	}()
@@ -93,8 +136,8 @@ func (er *ElemRunner) Run(part Part, errChan chan error) {
 
 type PartAttr struct {
 	ID      string
-	JID     JID
-	Domain  string
+	JID     JID    // client's jid
+	Domain  string // server domain
 	Version string
 	Xmlns   string
 	XmlLang string
@@ -132,7 +175,7 @@ func (attr *PartAttr) head(elem *xml.StartElement, from, to string) {
 		eattr = append(eattr, xml.Attr{Name: xml.Name{Local: "lang", Space: "xml"}, Value: attr.XmlLang})
 	}
 	// if attr.Xmlns != "" {
-	// 	eattr = append(eattr, xml.Attr{Name: xml.Name{Local: "xmlns"}, Value: attr.XmlLang})
+	// 	eattr = append(eattr, xml.Attr{Name: xml.Name{Local: "xmlns"}, Value: attr.Xmlns})
 	// }
 	if !attr.OpenTag {
 		*elem = xml.StartElement{
@@ -166,7 +209,7 @@ func (sa *PartAttr) ParseToServer(elem xml.StartElement) error {
 			sa.Version = attr.Value
 		} else if attr.Name.Local == "id" && attr.Value != "" {
 			sa.ID = attr.Value
-		} else if attr.Name.Local == "lang" {
+		} else if attr.Name.Local == "xml:lang" {
 			sa.XmlLang = attr.Value
 		}
 	}
@@ -238,20 +281,13 @@ func (part *XPart) WithFeature(f Feature) {
 
 func (part *XPart) Run() error {
 	part.logger.Printf(Info, "part instance [%s] start running", part.attr.ID)
-	if err := part.handleFeatures(); err != nil {
-		return err
-	}
-	return part.handleElemHandlers()
+	errChan := make(chan error)
+	part.ElemRunner.Run(part, errChan)
+	return <-errChan
 }
 
 func (part *XPart) Attr() *PartAttr {
 	return &part.attr
-}
-
-func (part *XPart) handleElemHandlers() error {
-	errChan := make(chan error)
-	part.ElemRunner.Run(part, errChan)
-	return <-errChan
 }
 
 //                 +---------------------+
@@ -298,67 +334,69 @@ func (part *XPart) handleElemHandlers() error {
 // |                                     v                        |
 // +<-------------------------- {restart mandatory?} ------------>+
 //              no                                     yes
-
-func (part *XPart) handleFeatures() error {
+func (part *XPart) handleFeatures(header xml.StartElement) error {
 	for {
-		f := part.nextUnresolvedMandatoryFeature()
-		if f == nil {
-			break
-		}
-		if err := part.reopen(); err != nil {
+		if err := part.Attr().ParseToServer(header); err != nil {
 			return err
 		}
-		if err := part.notifyFeatures(f.Elem()); err != nil {
+		if err := part.Channel().Open(part.Attr()); err != nil {
 			return err
 		}
-		var elem stravaganza.Element
-		if err := part.Channel().NextElement(&elem); err != nil {
+		features, hasMandatory := part.unresolvedFeatures()
+		if !hasMandatory {
+			return part.handleUnmandatoryFeatures(features)
+		}
+		elems := []stravaganza.Element{}
+		runner := NewElemRunner(part.Channel())
+		runner.SetHandleLimit(1)
+		for _, f := range features {
+			runner.WithElemHandler(f)
+			elems = append(elems, f.Elem())
+		}
+		if err := part.notifyFeatures(elems...); err != nil {
 			return err
 		}
-		if !f.Match(elem) {
-			return errors.New("client error")
-		}
-		if err := f.Handle(elem, part); err != nil {
+		errChan := make(chan error)
+		runner.Run(part, errChan)
+		if err := <-errChan; err != nil {
 			return err
+		}
+		i, err := part.Channel().Next()
+		if err != nil {
+			return err
+		}
+		var ok bool
+		if header, ok = i.(xml.StartElement); !ok {
+			return errors.New("unexpected elem")
 		}
 	}
-	return part.handleOptionalFeatures()
 }
 
-func (part *XPart) nextUnresolvedMandatoryFeature() Feature {
-	for _, feature := range part.features {
-		if feature.Mandatory() && !feature.Handled() {
-			return feature
-		}
-	}
-	return nil
-}
-
-func (part *XPart) handleOptionalFeatures() error {
+func (part *XPart) handleUnmandatoryFeatures(features []Feature) error {
 	elems := []stravaganza.Element{}
-	for _, f := range part.features {
-		if f.Handled() || f.Mandatory() {
-			continue
-		}
+	for _, f := range features {
 		elems = append(elems, f.Elem())
 		part.WithElemHandler(f)
-	}
-	if err := part.reopen(); err != nil {
-		return err
 	}
 	part.notifyFeatures(elems...)
 	return nil
 }
 
-func (part *XPart) notifyFeatures(elems ...stravaganza.Element) error {
-	return part.Channel().SendElement(stravaganza.NewBuilder("features").WithChildren(elems...).Build())
+func (part *XPart) unresolvedFeatures() (features []Feature, hasMandatory bool) {
+	for _, f := range part.features {
+		if f.Handled() {
+			continue
+		}
+		if f.Mandatory() {
+			hasMandatory = true
+		}
+		features = append(features, f)
+	}
+	return
 }
 
-func (part *XPart) reopen() error {
-	if err := part.channel.WaitHeader(&part.attr); err != nil {
-		return err
-	}
-	return part.channel.Open(part.Attr())
+func (part *XPart) notifyFeatures(elems ...stravaganza.Element) error {
+	return part.Channel().SendElement(stravaganza.NewBuilder("features").WithChildren(elems...).Build())
 }
 
 func (part *XPart) Logger() Logger {

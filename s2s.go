@@ -41,5 +41,6 @@ func (s2s *S2S) HandleStandFeature() {
 
 func (s2s *S2S) Start() error {
 	s2s.HandleStandFeature()
+	s2s.part.Channel().SetLogger(s2s.part.Logger())
 	return s2s.part.Run()
 }

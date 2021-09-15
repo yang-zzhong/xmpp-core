@@ -115,12 +115,14 @@ type SASLFeature struct {
 	authorized Authorized
 	handled    bool
 	mandatory  bool
+	*IDAble
 }
 
 func NewSASLFeature(authorized Authorized) *SASLFeature {
 	mf := new(SASLFeature)
 	mf.supported = make(map[string]Auth)
 	mf.authorized = authorized
+	mf.IDAble = NewIDAble()
 	return mf
 }
 

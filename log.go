@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"runtime"
 )
 
 type LogLevel int
@@ -52,11 +51,11 @@ func (logger *XLogger) Printf(level LogLevel, format string, v ...interface{}) {
 		return
 	}
 	logger.underlying.Printf("%s: %s", logger.levelString(level), fmt.Sprintf(format, v...))
-	if level == Error || level == Fatal {
-		buf := make([]byte, 1<<16)
-		runtime.Stack(buf, false)
-		logger.underlying.Printf("******************* STACK ********************* \n %s \n        ******************** END STACK ********************\n", string(buf))
-	}
+	// if level == Error || level == Fatal {
+	// 	buf := make([]byte, 1<<16)
+	// 	runtime.Stack(buf, false)
+	// 	logger.underlying.Printf("******************* STACK ********************* \n %s \n        ******************** END STACK ********************\n", string(buf))
+	// }
 }
 
 func (logger *XLogger) levelString(level LogLevel) string {

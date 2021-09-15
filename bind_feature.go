@@ -11,6 +11,7 @@ type BindFeature struct {
 	rsb       ResourceBinder
 	handled   bool
 	mandatory bool
+	*IDAble
 }
 
 type ResourceBinder interface {
@@ -45,7 +46,7 @@ func BindErrorElemFromError(id string, err error) stravaganza.Element {
 }
 
 func NewBindFeature(rsb ResourceBinder, mandatory bool) *BindFeature {
-	return &BindFeature{rsb: rsb, handled: false, mandatory: mandatory}
+	return &BindFeature{IDAble: NewIDAble(), rsb: rsb, handled: false, mandatory: mandatory}
 }
 
 func (bf *BindFeature) Mandatory() bool {

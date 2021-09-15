@@ -9,9 +9,7 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"time"
 
-	"github.com/jackal-xmpp/stravaganza/v2"
 	"gosrc.io/xmpp"
 	"gosrc.io/xmpp/stanza"
 )
@@ -35,15 +33,15 @@ func Start() {
 	if err != nil {
 		log.Fatalf("%+v", err)
 	}
-	time.AfterFunc(3*time.Second, func() {
-		msg := stravaganza.NewBuilder("message").
-			WithAttribute("from", "test@localhost").
-			WithAttribute("to", "romeo@localhost").
-			WithAttribute("type", "chat").
-			WithAttribute("xml:lang", "en").
-			WithChild(stravaganza.NewBuilder("body").WithText("Art thou not Romeo, and a Montague?").Build()).Build()
-		client.SendRaw(msg.GoString())
-	})
+	// time.AfterFunc(3*time.Second, func() {
+	// 	msg := stravaganza.NewBuilder("message").
+	// 		WithAttribute("from", "test@localhost").
+	// 		WithAttribute("to", "romeo@localhost").
+	// 		WithAttribute("type", "chat").
+	// 		WithAttribute("xml:lang", "en").
+	// 		WithChild(stravaganza.NewBuilder("body").WithText("Art thou not Romeo, and a Montague?").Build()).Build()
+	// 	client.SendRaw(msg.GoString())
+	// })
 
 	// If you pass the client to a connection manager, it will handle the reconnect policy
 	// for you automatically.

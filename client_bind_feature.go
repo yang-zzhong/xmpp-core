@@ -3,17 +3,16 @@ package xmppcore
 import (
 	"errors"
 
-	"github.com/google/uuid"
 	"github.com/jackal-xmpp/stravaganza/v2"
 )
 
 type ClientBindFeature struct {
-	id string
 	rb ResourceBinder
+	*IDAble
 }
 
 func NewClientBindFeature(rb ResourceBinder) *ClientBindFeature {
-	return &ClientBindFeature{id: uuid.New().String(), rb: rb}
+	return &ClientBindFeature{rb: rb, IDAble: NewIDAble()}
 }
 
 func (cbf *ClientBindFeature) Match(elem stravaganza.Element) bool {
@@ -25,7 +24,7 @@ func (cbf *ClientBindFeature) Handle(elem stravaganza.Element, part Part) error 
 		return errors.New("wrong name bind namespace")
 	}
 	src := stravaganza.NewBuilder("iq").
-		WithAttribute("id", cbf.id).
+		WithAttribute("id", cbf.ID()).
 		WithAttribute("type", "set").
 		WithChild(stravaganza.NewBuilder("bind").WithAttribute("xmlns", nsBind).Build()).Build()
 	if err := part.Channel().SendElement(src); err != nil {
@@ -38,7 +37,7 @@ func (cbf *ClientBindFeature) Handle(elem stravaganza.Element, part Part) error 
 	if elem.Attribute("type") == "error" {
 		return errors.New("server bind error")
 	}
-	if elem.Name() != "iq" || elem.Attribute("id") != cbf.id || elem.Attribute("type") != "result" {
+	if elem.Name() != "iq" || elem.Attribute("id") != cbf.ID() || elem.Attribute("type") != "result" {
 		return errors.New("not a bind result")
 	}
 	bind := elem.Child("bind")

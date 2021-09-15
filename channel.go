@@ -17,8 +17,8 @@ var (
 )
 
 type Receiver interface {
-	NextToken(token *xml.Token) error
 	NextElement(elem *stravaganza.Element) error
+	Next() (interface{}, error)
 }
 
 type Sender interface {
@@ -30,9 +30,8 @@ type Sender interface {
 type Channel interface {
 	Receiver
 	Sender
-	SetLogger(Logger)
-	WaitHeader(header *PartAttr) error
 	Open(attr *PartAttr) error
+	SetLogger(Logger)
 	Close()
 }
 
@@ -112,22 +111,26 @@ func (xc *XChannel) WaitSecOnClose(sec int) {
 	xc.waitSecOnClose = sec
 }
 
-func (xc *XChannel) NextToken(token *xml.Token) error {
-	var err error
-	*token, err = xc.decoder.Token()
-	if err == nil {
-		xc.logToken("RECV", *token)
-	}
-	return err
-}
-
 func (xc *XChannel) NextElement(elem *stravaganza.Element) error {
 	var err error
-	*elem, err = NewParser(xc.conn, xc.max).Parse()
+	*elem, err = NewParser(xc.conn, xc.max).NextElement()
 	if err == nil {
 		xc.logElement("RECV", *elem)
 	}
 	return err
+}
+
+func (xc *XChannel) Next() (interface{}, error) {
+	i, e := NewParser(xc.conn, xc.max).Next()
+	if e != nil {
+		return i, e
+	}
+	if t, ok := i.(xml.StartElement); ok {
+		xc.logToken("RECV", t)
+	} else if e, ok := i.(stravaganza.Element); ok {
+		xc.logElement("RECV", e)
+	}
+	return i, nil
 }
 
 func (xc *XChannel) Close() {
@@ -148,42 +151,6 @@ func (xc *XChannel) Close() {
 	time.AfterFunc(time.Second*time.Duration(xc.waitSecOnClose), func() {
 		xc.conn.Close()
 	})
-}
-
-func (xc *XChannel) WaitHeader(attr *PartAttr) error {
-	if xc.state == stateClosed {
-		return errors.New("channel state error")
-	}
-	setstate := func(openTag bool) {
-		if attr.OpenTag {
-			xc.state = stateWSOpened
-		} else {
-			xc.state = stateTCPOpened
-		}
-	}
-	var token xml.Token
-	for {
-		if err := xc.NextToken(&token); err != nil {
-			return err
-		}
-		switch elem := token.(type) {
-		case xml.StartElement:
-			if xc.isServer {
-				if err := attr.ParseToServer(elem); err != nil {
-					return err
-				}
-				setstate(attr.OpenTag)
-				return nil
-			}
-			if err := attr.ParseToClient(elem); err != nil {
-				return err
-			}
-			setstate(attr.OpenTag)
-			return nil
-		default:
-			continue
-		}
-	}
 }
 
 func (gs *XChannel) Open(attr *PartAttr) error {
