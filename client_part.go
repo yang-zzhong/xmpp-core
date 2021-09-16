@@ -60,7 +60,7 @@ func (od *ClientPart) Conn() Conn {
 func (od *ClientPart) Run() error {
 	od.Channel().Open(od.Attr())
 	var header xml.StartElement
-	i, err := od.Channel().Next()
+	i, err := od.Channel().next()
 	if err != nil {
 		return err
 	}
@@ -142,7 +142,7 @@ func (od *ClientPart) handleFeatures(header xml.StartElement) error {
 		if err := od.Channel().Open(od.Attr()); err != nil {
 			return err
 		}
-		i, err := od.Channel().Next()
+		i, err := od.Channel().next()
 		if err != nil {
 			return err
 		}

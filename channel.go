@@ -18,7 +18,7 @@ var (
 
 type Receiver interface {
 	NextElement(elem *stravaganza.Element) error
-	Next() (interface{}, error)
+	next() (interface{}, error)
 }
 
 type Sender interface {
@@ -120,15 +120,17 @@ func (xc *XChannel) NextElement(elem *stravaganza.Element) error {
 	return err
 }
 
-func (xc *XChannel) Next() (interface{}, error) {
+func (xc *XChannel) next() (interface{}, error) {
 	i, e := NewParser(xc.conn, xc.max).Next()
 	if e != nil {
 		return i, e
 	}
-	if t, ok := i.(xml.StartElement); ok {
-		xc.logToken("RECV", t)
-	} else if e, ok := i.(stravaganza.Element); ok {
-		xc.logElement("RECV", e)
+	if xc.logger != nil {
+		if t, ok := i.(xml.StartElement); ok {
+			xc.logToken("RECV", t)
+		} else if e, ok := i.(stravaganza.Element); ok {
+			xc.logElement("RECV", e)
+		}
 	}
 	return i, nil
 }
