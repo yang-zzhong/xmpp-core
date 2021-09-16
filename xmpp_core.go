@@ -97,7 +97,7 @@ func (er *ElemRunner) Quit() {
 func (er *ElemRunner) Run(part Part, errChan chan error) {
 	go func() {
 		for {
-			i, err := er.channel.Next()
+			i, err := er.channel.next()
 			if err != nil {
 				if er.quit == true {
 					errChan <- nil
@@ -361,7 +361,7 @@ func (part *XPart) handleFeatures(header xml.StartElement) error {
 		if err := <-errChan; err != nil {
 			return err
 		}
-		i, err := part.Channel().Next()
+		i, err := part.Channel().next()
 		if err != nil {
 			return err
 		}
