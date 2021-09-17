@@ -67,7 +67,8 @@ func (scram *ScramAuth) Auth(mechanism, authInfo string, part Part) (username st
 		WithAttribute(stravaganza.Namespace, nsSASL).
 		WithText(buf.String()).
 		Build()
-	if err := part.Channel().SendElement(msg); err != nil {
+	if err = part.Channel().SendElement(msg); err != nil {
+		return
 	}
 	if err = scram.waitChallengeResponse(&msg, part.Channel()); err != nil {
 		return

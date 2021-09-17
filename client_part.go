@@ -2,7 +2,6 @@ package xmppcore
 
 import (
 	"encoding/xml"
-	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -59,18 +58,13 @@ func (od *ClientPart) Conn() Conn {
 
 func (od *ClientPart) Run() error {
 	od.Channel().Open(od.Attr())
-	var header xml.StartElement
-	i, err := od.Channel().next()
-	if err != nil {
-		return err
-	}
-	var ok bool
-	if header, ok = i.(xml.StartElement); !ok {
-		return errors.New("unexpected elem")
-	}
-	if err := od.handleFeatures(header); err != nil {
-		return err
-	}
+	// var header xml.StartElement
+	// if err := od.Channel().WaitHeader(&header); err != nil {
+	// 	return err
+	// }
+	// if err := od.handleFeatures(header); err != nil {
+	// 	return err
+	// }
 	errChan := make(chan error)
 	od.ElemRunner.Run(od, errChan)
 	return <-errChan
@@ -131,24 +125,20 @@ func (od *ClientPart) handleFeatures(header xml.StartElement) error {
 			return err
 		}
 	handle:
-		f := od.selectOne(features)
+		f, rest := od.selectOne(features)
 		handled, err := od.handle(f)
 		if err != nil {
 			return err
 		}
 		if !handled {
+			features = rest
 			goto handle
 		}
 		if err := od.Channel().Open(od.Attr()); err != nil {
 			return err
 		}
-		i, err := od.Channel().next()
-		if err != nil {
+		if err := od.Channel().WaitHeader(&header); err != nil {
 			return err
-		}
-		var ok bool
-		if header, ok = i.(xml.StartElement); !ok {
-			return errors.New("not a header")
 		}
 	}
 }
@@ -164,34 +154,35 @@ func (od *ClientPart) handle(f stravaganza.Element) (handled bool, err error) {
 		}
 	}
 	if !handled && od.isMandatory(f) {
-		err = errors.New(fmt.Sprintf("feature %s not handled", f.Name()))
+		err = fmt.Errorf("feature %s not handled", f.Name())
 	}
 	return
 }
 
-func (od *ClientPart) selectOne(features []stravaganza.Element) stravaganza.Element {
+func (od *ClientPart) selectOne(features []stravaganza.Element) (f stravaganza.Element, rest []stravaganza.Element) {
 	priorities := []string{"starttls", "mechanisms", "bind"}
 	for _, s := range priorities {
-		for i, f := range features {
+		var i int
+		for i, f = range features {
 			if f.Name() == s {
-				features = append(features[:i], features[i+1:]...)
-				return f
+				rest = append(features[:i], features[i+1:]...)
+				return
 			}
 		}
 	}
-	feature := features[0]
-	features = features[1:]
-	return feature
+	f = features[0]
+	rest = features[1:]
+	return
 }
 
-func (od *ClientPart) containMandatories(elems []stravaganza.Element) bool {
-	for _, elem := range elems {
-		if od.isMandatory(elem) {
-			return true
-		}
-	}
-	return false
-}
+// func (od *ClientPart) containMandatories(elems []stravaganza.Element) bool {
+// 	for _, elem := range elems {
+// 		if od.isMandatory(elem) {
+// 			return true
+// 		}
+// 	}
+// 	return false
+// }
 
 func (od *ClientPart) isMandatory(elem stravaganza.Element) bool {
 	if elem.Name() == "starttls" || elem.Name() == "bind" {
@@ -204,9 +195,6 @@ func (od *ClientPart) isMandatory(elem stravaganza.Element) bool {
 }
 
 func (od *ClientPart) serverFeatures() (res []stravaganza.Element, err error) {
-	// od.channel.Open(&od.attr)
-	// var header stravaganza.Element
-	// od.channel.NextElement(&header)
 	var elem stravaganza.Element
 	if err = od.channel.NextElement(&elem); err != nil {
 		return

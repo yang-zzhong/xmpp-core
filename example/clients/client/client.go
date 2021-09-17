@@ -3,6 +3,7 @@ package client
 import (
 	"crypto/tls"
 	"fmt"
+	"io"
 	"net"
 	"os"
 
@@ -34,11 +35,11 @@ func Start() {
 	client.WithFeature(xmppcore.NewClientTlsFeature(&tls.Config{InsecureSkipVerify: true}))
 	client.WithFeature(sasl)
 	client.WithFeature(xmppcore.NewClientBindFeature(&clientResourceBinder{}))
-	// comp := xmppcore.NewClientCompressFeature()
-	// comp.Support(xmppcore.ZLIB, func(rw io.ReadWriter) xmppcore.Compressor {
-	// 	return xmppcore.NewCompZlib(rw)
-	// })
-	// client.WithFeature(comp)
+	comp := xmppcore.NewClientCompressFeature()
+	comp.Support(xmppcore.ZLIB, func(rw io.ReadWriter) xmppcore.Compressor {
+		return xmppcore.NewCompZlib(rw)
+	})
+	client.WithFeature(comp)
 	client.Channel().SetLogger(logger)
 	if err := client.Run(); err != nil {
 		fmt.Printf("client error: %s\n", err.Error())

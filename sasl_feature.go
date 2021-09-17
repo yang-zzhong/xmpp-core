@@ -43,7 +43,7 @@ func SaslFailureError(tagName, desc string) error {
 	if desc == "" {
 		return errors.New(tagName)
 	}
-	return errors.New(fmt.Sprintf("%s: %s", tagName, desc))
+	return fmt.Errorf("%s: %s", tagName, desc)
 }
 
 var AllSaslFailures = []string{
@@ -114,7 +114,6 @@ type SASLFeature struct {
 	supported  map[string]Auth
 	authorized Authorized
 	handled    bool
-	mandatory  bool
 	*IDAble
 }
 
@@ -181,16 +180,4 @@ func (mf *SASLFeature) Handle(elem stravaganza.Element, part Part) error {
 
 func (mf *SASLFeature) Handled() bool {
 	return mf.handled
-}
-
-func (mf *SASLFeature) nextElement(s Channel) (stravaganza.Element, error) {
-	var elem stravaganza.Element
-	if err := s.NextElement(&elem); err != nil {
-		return elem, err
-	}
-	if elem.Name() == "abort" {
-		s.SendElement(SaslFailureElem(SFAborted, ""))
-		return nil, SaslFailureError(SFAborted, "")
-	}
-	return elem, nil
 }

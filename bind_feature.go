@@ -45,8 +45,8 @@ func BindErrorElemFromError(id string, err error) stravaganza.Element {
 	return BindErrorElem(id, errTag, ss[0])
 }
 
-func NewBindFeature(rsb ResourceBinder, mandatory bool) *BindFeature {
-	return &BindFeature{IDAble: NewIDAble(), rsb: rsb, handled: false, mandatory: mandatory}
+func NewBindFeature(rsb ResourceBinder) *BindFeature {
+	return &BindFeature{IDAble: NewIDAble(), rsb: rsb, handled: false, mandatory: false}
 }
 
 func (bf *BindFeature) Mandatory() bool {
@@ -54,7 +54,12 @@ func (bf *BindFeature) Mandatory() bool {
 }
 
 func (bf *BindFeature) Elem() stravaganza.Element {
-	return stravaganza.NewBuilder("bind").WithAttribute("xmlns", nsBind).Build()
+	elem := stravaganza.NewBuilder("bind").WithAttribute("xmlns", nsBind)
+
+	if bf.mandatory {
+		elem.WithChild(stravaganza.NewBuilder("required").Build())
+	}
+	return elem.Build()
 }
 
 func (bf *BindFeature) Match(elem stravaganza.Element) bool {

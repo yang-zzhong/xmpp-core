@@ -3,6 +3,7 @@ package xmppcore
 import (
 	"encoding/xml"
 	"errors"
+	"fmt"
 
 	"github.com/google/uuid"
 
@@ -58,7 +59,6 @@ type ElemRunner struct {
 	elemHandlers []ElemHandler
 	handleLimit  int
 	handled      int
-	quitChan     chan bool
 	quit         bool
 }
 
@@ -96,11 +96,14 @@ func (er *ElemRunner) Quit() {
 
 func (er *ElemRunner) Run(part Part, errChan chan error) {
 	go func() {
+		i := 0
 		for {
+			i = i + 1
 			i, err := er.channel.next()
 			if err != nil {
-				if er.quit == true {
+				if er.quit {
 					errChan <- nil
+					part.Logger().Printf(Info, "quit!")
 					return
 				}
 				part.Logger().Printf(Error, "a error from part instance [%s] message handler: %s", part.ID(), err.Error())
@@ -112,9 +115,7 @@ func (er *ElemRunner) Run(part Part, errChan chan error) {
 					errChan <- err
 					return
 				}
-				continue
-			} else {
-				elem := i.(stravaganza.Element)
+			} else if elem, ok := i.(stravaganza.Element); ok {
 				for _, handler := range er.elemHandlers {
 					if handler.Match(elem) {
 						er.handled = er.handled + 1
@@ -124,11 +125,13 @@ func (er *ElemRunner) Run(part Part, errChan chan error) {
 						}
 					}
 				}
-			}
-			if er.handleLimit > 0 && er.handled >= er.handleLimit {
-				errChan <- nil
-				close(errChan)
-				return
+				if er.handleLimit > 0 && er.handled >= er.handleLimit {
+					errChan <- nil
+					close(errChan)
+					return
+				}
+			} else if bs, ok := i.(xml.CharData); ok {
+				fmt.Printf("bs: %v\n", bs)
 			}
 		}
 	}()
@@ -361,13 +364,8 @@ func (part *XPart) handleFeatures(header xml.StartElement) error {
 		if err := <-errChan; err != nil {
 			return err
 		}
-		i, err := part.Channel().next()
-		if err != nil {
+		if err := part.Channel().WaitHeader(&header); err != nil {
 			return err
-		}
-		var ok bool
-		if header, ok = i.(xml.StartElement); !ok {
-			return errors.New("unexpected elem")
 		}
 	}
 }

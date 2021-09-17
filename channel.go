@@ -30,6 +30,7 @@ type Sender interface {
 type Channel interface {
 	Receiver
 	Sender
+	WaitHeader(*xml.StartElement) error
 	Open(attr *PartAttr) error
 	SetLogger(Logger)
 	Close()
@@ -84,10 +85,10 @@ type XChannel struct {
 	conn           io.ReadWriteCloser
 	decoder        *xml.Decoder
 	encoder        *xml.Encoder
-	max            int
 	isServer       bool
 	state          int
 	waitSecOnClose int
+	parser         *Parser
 	logger         Logger
 }
 
@@ -96,9 +97,9 @@ func NewXChannel(conn Conn, isServer bool) *XChannel {
 		conn:           conn,
 		decoder:        xml.NewDecoder(conn),
 		encoder:        xml.NewEncoder(conn),
-		max:            1024 * 1024 * 2,
 		isServer:       isServer,
 		state:          stateInit,
+		parser:         NewParser(conn, 1024*1024*2),
 		waitSecOnClose: 2,
 	}
 }
@@ -111,9 +112,25 @@ func (xc *XChannel) WaitSecOnClose(sec int) {
 	xc.waitSecOnClose = sec
 }
 
+func (xc *XChannel) WaitHeader(header *xml.StartElement) error {
+	for {
+		i, err := xc.next()
+		if err != nil {
+			return err
+		}
+		switch t := i.(type) {
+		case stravaganza.Element:
+			return fmt.Errorf("unexpected element: %s", t.GoString())
+		case xml.StartElement:
+			*header = t
+			return nil
+		}
+	}
+}
+
 func (xc *XChannel) NextElement(elem *stravaganza.Element) error {
 	var err error
-	*elem, err = NewParser(xc.conn, xc.max).NextElement()
+	*elem, err = xc.parser.NextElement()
 	if err == nil {
 		xc.logElement("RECV", *elem)
 	}
@@ -121,15 +138,18 @@ func (xc *XChannel) NextElement(elem *stravaganza.Element) error {
 }
 
 func (xc *XChannel) next() (interface{}, error) {
-	i, e := NewParser(xc.conn, xc.max).Next()
+	i, e := xc.parser.Next()
 	if e != nil {
 		return i, e
 	}
 	if xc.logger != nil {
-		if t, ok := i.(xml.StartElement); ok {
+		switch t := i.(type) {
+		case xml.StartElement:
 			xc.logToken("RECV", t)
-		} else if e, ok := i.(stravaganza.Element); ok {
-			xc.logElement("RECV", e)
+		case stravaganza.Element:
+			xc.logElement("RECV", t)
+		default:
+			xc.logger.Printf(Debug, "RECV: %s", t)
 		}
 	}
 	return i, nil

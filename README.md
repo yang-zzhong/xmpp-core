@@ -189,15 +189,7 @@ func (s *Server) c2sHandler(conn xmppcore.Conn, connType xmppcore.ConnType) {
 }
 
 func (s *Server) s2sHandler(conn xmppcore.Conn, connType xmppcore.ConnType) {
-	s2s := xmppcore.NewS2S(conn, s.config.Domain, s.logger)
-	if s.config.CertFile != "" && s.config.KeyFile != "" {
-		s2s.WithTLS(s.config.CertFile, s.config.KeyFile)
-	}
-	s2s.WithSASLFeature(memoryAuthorized).
-		WithSASLSupport(xmppcore.SM_PLAIN, xmppcore.NewPlainAuth(memoryPlainAuthUserFetcher, md5.New))
-	if err := s2s.Start(); err != nil {
-		s.logger.Printf(xmppcore.Error, err.Error())
-	}
+	s.c2sHandler(conn, connType)
 }
 
 ```

@@ -1,7 +1,6 @@
 package xmppcore
 
 import (
-	"bytes"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -32,7 +31,7 @@ const (
 // ErrTooLargeStanza will be returned Parse when the size of the incoming stanza is too large.
 var ErrTooLargeStanza = errors.New("parser: too large stanza")
 
-var ErrUnexpectedOpenHeader = errors.New("parser: unexpected open header")
+var ErrUnexpectedToken = errors.New("parser: unexpected token")
 
 // ErrStreamClosedByPeer will be returned by Parse when stream closed element is parsed.
 var ErrStreamClosedByPeer = errors.New("parser: stream closed by peer")
@@ -67,8 +66,8 @@ func (p *Parser) NextElement() (stravaganza.Element, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, ok := i.(xml.StartElement); ok {
-		return nil, ErrUnexpectedOpenHeader
+	if _, ok := i.(stravaganza.Element); !ok {
+		return nil, ErrUnexpectedToken
 	}
 	return i.(stravaganza.Element), nil
 }
@@ -80,12 +79,18 @@ func (p *Parser) Next() (interface{}, error) {
 		if err != nil {
 			return nil, err
 		}
-		// check max stanza size limit
 		off := p.dec.InputOffset()
 		if p.maxStanzaSize > 0 && off-p.lastOffset > p.maxStanzaSize {
 			return nil, ErrTooLargeStanza
 		}
 		switch t1 := t.(type) {
+		case xml.ProcInst:
+			if p.inElement {
+				return nil, ErrNoElement
+			}
+			p.lastOffset = p.dec.InputOffset()
+			p.nextElement = nil
+			return t1, nil
 		case xml.StartElement:
 			// got <stream>/<open>
 			if p.mode == SocketStream && (t1.Name.Local == streamName || t1.Name.Local == openName) {
@@ -96,13 +101,19 @@ func (p *Parser) Next() (interface{}, error) {
 			p.startElement(t1)
 		case xml.CharData:
 			if !p.inElement {
-				return nil, ErrNoElement
+				if err := p.charData(t1); err != nil {
+					return nil, err
+				}
+				p.lastOffset = p.dec.InputOffset()
+				p.nextElement = nil
+				return t1, nil
 			}
 			p.setElementText(t1)
-
 		case xml.EndElement:
 			if p.mode == SocketStream && t1.Name.Local == streamName && t1.Name.Space == streamName {
-				return nil, ErrStreamClosedByPeer
+				p.lastOffset = p.dec.InputOffset()
+				p.nextElement = nil
+				return t1, nil
 			}
 			if err := p.endElement(t1); err != nil {
 				return nil, err
@@ -121,13 +132,22 @@ done:
 	return elem, nil
 }
 
-func (p *Parser) logToken(token xml.Token) {
-	var buf bytes.Buffer
-	en := xml.NewEncoder(&buf)
-	en.EncodeToken(token)
-	en.Flush()
-	fmt.Printf("token: %s\n", buf.String())
+func (p *Parser) charData(bs xml.CharData) error {
+	for _, b := range bs {
+		if b != 10 && b != 32 && b != '\n' && b != '\t' {
+			return ErrNoElement
+		}
+	}
+	return nil
 }
+
+// func (p *Parser) logToken(token xml.Token) {
+// 	var buf bytes.Buffer
+// 	en := xml.NewEncoder(&buf)
+// 	en.EncodeToken(token)
+// 	en.Flush()
+// 	fmt.Printf("token: %s\n", buf.String())
+// }
 
 func (p *Parser) startElement(t xml.StartElement) {
 	name := t.Name.Local

@@ -6,7 +6,6 @@ import (
 	"errors"
 	"net"
 	"net/http"
-	"sync"
 
 	"github.com/gorilla/websocket"
 )
@@ -40,7 +39,6 @@ type WsConnGrabber struct {
 	certFile, keyFile string
 
 	grabbing bool
-	m        sync.Mutex
 
 	srv *http.Server
 }
@@ -121,7 +119,6 @@ type TcpConnGrabber struct {
 	listenOn string
 	connFor  ConnFor
 	logger   Logger
-	m        sync.Mutex
 	grabbing bool
 
 	keyFile  string
@@ -151,9 +148,9 @@ func (tc *TcpConnGrabber) ReplaceLogger(logger Logger) {
 func (tc *TcpConnGrabber) Grab(connChan chan Conn) error {
 	var err error
 	if tc.certFile != "" && tc.keyFile != "" {
-		cert, err := tls.LoadX509KeyPair(tc.certFile, tc.keyFile)
-		if err != nil {
-			return err
+		cert, e := tls.LoadX509KeyPair(tc.certFile, tc.keyFile)
+		if e != nil {
+			return e
 		}
 		config := tls.Config{Certificates: []tls.Certificate{cert}}
 		tc.ln, err = tls.Listen("tcp", tc.listenOn, &config)
