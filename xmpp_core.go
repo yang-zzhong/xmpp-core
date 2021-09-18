@@ -3,7 +3,6 @@ package xmppcore
 import (
 	"encoding/xml"
 	"errors"
-	"fmt"
 
 	"github.com/google/uuid"
 
@@ -49,9 +48,10 @@ type Part interface {
 	WithElemHandler(ElemHandler)
 	Logger() Logger
 	Conn() Conn
-	Run() error
-	Stop()
-	handleFeatures(header xml.StartElement) error
+
+	OnOpenHeader(header xml.StartElement) error
+	OnCloseToken()
+	OnWhiteSpace([]byte)
 }
 
 type ElemRunner struct {
@@ -110,16 +110,21 @@ func (er *ElemRunner) Run(part Part, errChan chan error) {
 				errChan <- err
 				return
 			}
-			if header, ok := i.(xml.StartElement); ok {
-				if err := part.handleFeatures(header); err != nil {
+			switch t := i.(type) {
+			case xml.StartElement:
+				if err := part.OnOpenHeader(t); err != nil {
 					errChan <- err
 					return
 				}
-			} else if elem, ok := i.(stravaganza.Element); ok {
+			case xml.CharData:
+				part.OnWhiteSpace(t)
+			case xml.EndElement:
+				part.OnCloseToken()
+			case stravaganza.Element:
 				for _, handler := range er.elemHandlers {
-					if handler.Match(elem) {
+					if handler.Match(t) {
 						er.handled = er.handled + 1
-						if err := handler.Handle(elem, part); err != nil {
+						if err := handler.Handle(t, part); err != nil {
 							part.Logger().Printf(Error, "a error occured from part instance [%s] message handler: %s", part.ID(), err.Error())
 							errChan <- err
 						}
@@ -130,8 +135,6 @@ func (er *ElemRunner) Run(part Part, errChan chan error) {
 					close(errChan)
 					return
 				}
-			} else if bs, ok := i.(xml.CharData); ok {
-				fmt.Printf("bs: %v\n", bs)
 			}
 		}
 	}()
@@ -404,3 +407,11 @@ func (part *XPart) Logger() Logger {
 func (part *XPart) Stop() {
 	part.Quit()
 }
+
+func (part *XPart) OnCloseToken() {}
+
+func (part *XPart) OnOpenHeader(header xml.StartElement) error {
+	return part.handleFeatures(header)
+}
+
+func (part *XPart) OnWhiteSpace([]byte) {}

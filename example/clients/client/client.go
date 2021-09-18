@@ -41,7 +41,12 @@ func Start() {
 	// })
 	// client.WithFeature(comp)
 	client.Channel().SetLogger(logger)
-	if err := client.Run(); err != nil {
+	if err := client.Negotiate(); err != nil {
+		fmt.Printf("client negotiate error: %s\n", err.Error())
+	}
+	errChan := make(chan error)
+	client.Run(client, errChan)
+	if err := <-errChan; err != nil {
 		fmt.Printf("client error: %s\n", err.Error())
 	}
 	client.Stop()

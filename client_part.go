@@ -2,6 +2,7 @@ package xmppcore
 
 import (
 	"encoding/xml"
+	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -56,18 +57,13 @@ func (od *ClientPart) Conn() Conn {
 	return od.conn
 }
 
-func (od *ClientPart) Run() error {
+func (od *ClientPart) Negotiate() error {
 	od.Channel().Open(od.Attr())
-	// var header xml.StartElement
-	// if err := od.Channel().WaitHeader(&header); err != nil {
-	// 	return err
-	// }
-	// if err := od.handleFeatures(header); err != nil {
-	// 	return err
-	// }
-	errChan := make(chan error)
-	od.ElemRunner.Run(od, errChan)
-	return <-errChan
+	var header xml.StartElement
+	if err := od.Channel().WaitHeader(&header); err != nil {
+		return err
+	}
+	return od.handleFeatures(header)
 }
 
 func (od *ClientPart) Stop() {
@@ -157,6 +153,16 @@ func (od *ClientPart) handle(f stravaganza.Element) (handled bool, err error) {
 		err = fmt.Errorf("feature %s not handled", f.Name())
 	}
 	return
+}
+
+func (od *ClientPart) OnOpenHeader(header xml.StartElement) error {
+	return errors.New("unexpected open header")
+}
+
+func (od *ClientPart) OnWhiteSpace(bs []byte) {}
+
+func (od *ClientPart) OnCloseToken() {
+	od.Quit()
 }
 
 func (od *ClientPart) selectOne(features []stravaganza.Element) (f stravaganza.Element, rest []stravaganza.Element) {

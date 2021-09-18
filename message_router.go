@@ -60,9 +60,11 @@ func (msg *MessageRouter) outClient(conn net.Conn, jid *JID, c2s Part) Part {
 		return NewCompZlib(rw)
 	})
 	part.WithFeature(ccf)
-	go func() {
-		part.Run()
-	}()
+	if err := part.Negotiate(); err != nil {
+		return nil
+	}
+	errChan := make(chan error)
+	part.Run(part, errChan)
 	time.Sleep(time.Second)
 	part.WithElemHandler(msg.hub)
 	msg.hub.AddRemote(jid.Domain, part)
