@@ -3,7 +3,6 @@ package client
 import (
 	"crypto/tls"
 	"fmt"
-	"io"
 	"net"
 	"os"
 
@@ -13,8 +12,9 @@ import (
 type clientResourceBinder struct {
 }
 
-func (crb *clientResourceBinder) BindResource(part xmppcore.Part, jid string) (string, error) {
-	return jid, nil
+func (crb *clientResourceBinder) BindResource(part xmppcore.Part, resource string) (string, error) {
+	part.Attr().JID.Resource = resource
+	return part.Attr().JID.String(), nil
 }
 
 func Start() {
@@ -34,12 +34,12 @@ func Start() {
 	client := xmppcore.NewClientPart(xmppcore.NewTcpConn(conn, true), logger, &attr)
 	client.WithFeature(xmppcore.NewClientTlsFeature(&tls.Config{InsecureSkipVerify: true}))
 	client.WithFeature(sasl)
-	client.WithFeature(xmppcore.NewClientBindFeature(&clientResourceBinder{}))
-	comp := xmppcore.NewClientCompressFeature()
-	comp.Support(xmppcore.ZLIB, func(rw io.ReadWriter) xmppcore.Compressor {
-		return xmppcore.NewCompZlib(rw)
-	})
-	client.WithFeature(comp)
+	client.WithFeature(xmppcore.NewClientBindFeature(&clientResourceBinder{}, "xmpp-core-test"))
+	// comp := xmppcore.NewClientCompressFeature()
+	// comp.Support(xmppcore.ZLIB, func(rw io.ReadWriter) xmppcore.Compressor {
+	// 	return xmppcore.NewCompZlib(rw)
+	// })
+	// client.WithFeature(comp)
 	client.Channel().SetLogger(logger)
 	if err := client.Run(); err != nil {
 		fmt.Printf("client error: %s\n", err.Error())

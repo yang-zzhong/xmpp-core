@@ -61,17 +61,6 @@ func NewParser(reader io.Reader, maxStanzaSize int) *Parser {
 	}
 }
 
-func (p *Parser) NextElement() (stravaganza.Element, error) {
-	i, err := p.Next()
-	if err != nil {
-		return nil, err
-	}
-	if _, ok := i.(stravaganza.Element); !ok {
-		return nil, ErrUnexpectedToken
-	}
-	return i.(stravaganza.Element), nil
-}
-
 // Parse parses next available XML element from reader.
 func (p *Parser) Next() (interface{}, error) {
 	for {
@@ -110,7 +99,7 @@ func (p *Parser) Next() (interface{}, error) {
 			}
 			p.setElementText(t1)
 		case xml.EndElement:
-			if p.mode == SocketStream && t1.Name.Local == streamName && t1.Name.Space == streamName {
+			if p.mode == SocketStream && t1.Name.Local == streamName {
 				p.lastOffset = p.dec.InputOffset()
 				p.nextElement = nil
 				return t1, nil

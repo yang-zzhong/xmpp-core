@@ -7,10 +7,47 @@ import (
 	"github.com/jackal-xmpp/stravaganza/v2"
 )
 
+var (
+	ErrNotIqBind = errors.New("not iq bind")
+)
+
+type IqBind struct {
+	IQ       IQ
+	Resource string
+	JID      string
+}
+
+func IqBindFromElem(elem stravaganza.Element, ib *IqBind) error {
+	if err := IqFromElem(elem, &ib.IQ); err != nil {
+		return err
+	}
+	if b := elem.Child("bind"); b == nil {
+		return ErrNotIqBind
+	} else if b.Name() != "bind" || b.Attribute("xmlns") != nsBind {
+		return ErrNotIqBind
+	} else if r := b.Child("resource"); r != nil {
+		ib.Resource = r.Text()
+	} else if jid := b.Child("jid"); jid != nil {
+		ib.JID = jid.Text()
+	}
+	return nil
+}
+
+func (ib IqBind) ToElem(elem *stravaganza.Element) {
+	b := stravaganza.NewBuilder("bind").WithAttribute("xmlns", nsBind)
+	if ib.IQ.Type == IqSet && ib.Resource != "" {
+		b.WithChild(stravaganza.NewBuilder("resource").WithText(ib.Resource).Build())
+	} else if ib.IQ.Type == IqResult && ib.JID != "" {
+		b.WithChild(stravaganza.NewBuilder("jid").WithText(ib.JID).Build())
+	}
+	*elem = ib.IQ.ToElemBuilder().WithChild(b.Build()).Build()
+}
+
 type BindFeature struct {
 	rsb       ResourceBinder
 	handled   bool
 	mandatory bool
+	ib        IqBind
 	*IDAble
 }
 
@@ -27,9 +64,7 @@ const (
 )
 
 func BindErrorElem(id, tag, typ string) stravaganza.Element {
-	return stravaganza.NewIQBuilder().
-		WithAttribute("id", id).
-		WithAttribute("type", "error").
+	return IQ{ID: id, Type: IqError}.ToElemBuilder().
 		WithChild(stravaganza.NewBuilder("error").
 			WithAttribute("type", typ).
 			WithChild(stravaganza.NewBuilder(tag).WithAttribute("xmlns", nsStanza).Build()).Build()).Build()
@@ -55,7 +90,6 @@ func (bf *BindFeature) Mandatory() bool {
 
 func (bf *BindFeature) Elem() stravaganza.Element {
 	elem := stravaganza.NewBuilder("bind").WithAttribute("xmlns", nsBind)
-
 	if bf.mandatory {
 		elem.WithChild(stravaganza.NewBuilder("required").Build())
 	}
@@ -63,17 +97,10 @@ func (bf *BindFeature) Elem() stravaganza.Element {
 }
 
 func (bf *BindFeature) Match(elem stravaganza.Element) bool {
-	if elem.Name() != "iq" {
+	if err := IqBindFromElem(elem, &bf.ib); err != nil {
 		return false
 	}
-	if elem.Attribute("type") != "set" || elem.Attribute("id") == "" {
-		return false
-	}
-	bind := elem.Child("bind")
-	if bind == nil {
-		return false
-	}
-	if bind.Attribute("xmlns") != nsBind {
+	if bf.ib.IQ.Type != IqSet || bf.ib.IQ.ID == "" {
 		return false
 	}
 	return true
@@ -85,25 +112,15 @@ func (bf *BindFeature) Handled() bool {
 
 func (bf *BindFeature) Handle(elem stravaganza.Element, part Part) error {
 	bf.handled = true
-	id := elem.Attribute("id")
-	rsc, err := bf.rsb.BindResource(part, bf.resource(elem))
+	rsc, err := bf.rsb.BindResource(part, bf.ib.Resource)
 	if err != nil {
-		part.Channel().SendElement(BindErrorElemFromError(id, err))
+		part.Channel().SendElement(BindErrorElemFromError(bf.ib.IQ.ID, err))
 		return err
 	}
-	return part.Channel().SendElement(stravaganza.NewBuilder("iq").
-		WithAttribute("type", "result").
-		WithAttribute("id", id).WithChild(
-		stravaganza.NewBuilder("bind").
-			WithAttribute("xmlns", nsBind).
-			WithChild(
-				stravaganza.NewBuilder("jid").
-					WithText(rsc).
-					Build(),
-			).Build(),
-	).Build())
-}
-
-func (bf *BindFeature) resource(elem stravaganza.Element) string {
-	return ""
+	iq := bf.ib.IQ
+	iq.Type = IqResult
+	iq.To = iq.From
+	iq.From = part.Attr().Domain
+	IqBind{IQ: iq, JID: rsc}.ToElem(&elem)
+	return part.Channel().SendElement(elem)
 }

@@ -231,7 +231,7 @@ func (sa *PartAttr) ParseToClient(elem xml.StartElement) error {
 			if err := ParseJID(attr.Value, &jid); err != nil {
 				return err
 			}
-			if !jid.Equal(&sa.JID) {
+			if !jid.Equal(sa.JID) {
 				return ErrNotForThisDomainHead
 			}
 		} else if attr.Name.Local == "from" {

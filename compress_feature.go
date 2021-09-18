@@ -54,7 +54,7 @@ func (cf *CompressionFeature) Support(name string, build BuildCompressor) {
 }
 
 func (cf *CompressionFeature) Match(elem stravaganza.Element) bool {
-	return elem.Name() == "compress" && elem.Attribute("xmlns") == nsBind
+	return elem.Name() == "compress" && elem.Attribute("xmlns") == nsCompress
 }
 
 func (cf *CompressionFeature) Handle(elem stravaganza.Element, part Part) error {

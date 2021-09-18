@@ -7,26 +7,23 @@ import (
 )
 
 type ClientBindFeature struct {
-	rb ResourceBinder
+	rb       ResourceBinder
+	resource string
 	*IDAble
 }
 
-func NewClientBindFeature(rb ResourceBinder) *ClientBindFeature {
-	return &ClientBindFeature{rb: rb, IDAble: NewIDAble()}
+func NewClientBindFeature(rb ResourceBinder, resource string) *ClientBindFeature {
+	return &ClientBindFeature{rb: rb, IDAble: NewIDAble(), resource: resource}
 }
 
 func (cbf *ClientBindFeature) Match(elem stravaganza.Element) bool {
-	return elem.Name() == "bind"
+	return elem.Name() == "bind" && elem.Attribute("xmlns") == nsBind
 }
 
 func (cbf *ClientBindFeature) Handle(elem stravaganza.Element, part Part) error {
-	if elem.Attribute("xmlns") != nsBind {
-		return errors.New("wrong name bind namespace")
-	}
-	src := stravaganza.NewBuilder("iq").
-		WithAttribute("id", cbf.ID()).
-		WithAttribute("type", "set").
-		WithChild(stravaganza.NewBuilder("bind").WithAttribute("xmlns", nsBind).Build()).Build()
+	var src stravaganza.Element
+	IqBind{IQ: IQ{ID: cbf.ID(), Type: IqSet}, Resource: cbf.resource}.ToElem(&src)
+
 	if err := part.Channel().SendElement(src); err != nil {
 		part.Logger().Printf(Error, "send bind message error: %s", err.Error())
 		return err
@@ -37,18 +34,15 @@ func (cbf *ClientBindFeature) Handle(elem stravaganza.Element, part Part) error 
 	if elem.Attribute("type") == "error" {
 		return errors.New("server bind error")
 	}
-	if elem.Name() != "iq" || elem.Attribute("id") != cbf.ID() || elem.Attribute("type") != "result" {
+	var ib IqBind
+	if err := IqBindFromElem(elem, &ib); err != nil {
+		return err
+	}
+	if ib.IQ.ID != cbf.ID() || ib.IQ.Type != IqResult {
 		return errors.New("not a bind result")
 	}
-	bind := elem.Child("bind")
-	if bind == nil {
-		return errors.New("bind result error")
-	}
-	jid := bind.Child("jid")
-	if jid == nil {
-		return errors.New("bind result error")
-	}
-	cbf.rb.BindResource(part, jid.Text())
-
+	var jid JID
+	ParseJID(ib.JID, &jid)
+	cbf.rb.BindResource(part, jid.Resource)
 	return nil
 }

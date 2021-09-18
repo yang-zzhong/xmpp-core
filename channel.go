@@ -13,6 +13,7 @@ import (
 
 var (
 	ErrNotHeaderStart       = errors.New("not a start header")
+	ErrChannelClosed        = errors.New("channel closed")
 	ErrNotForThisDomainHead = errors.New("not for this domain header")
 )
 
@@ -40,10 +41,10 @@ const (
 	nsStream  = "http://etherx.jabber.org/streams"
 	nsFraming = "urn:ietf:params:xml:ns:xmpp-framing"
 
-	stateInit = iota
-	stateWSOpened
-	stateTCPOpened
-	stateClosed
+	stateInit      = 0
+	stateWSOpened  = 1
+	stateTCPOpened = 2
+	stateClosed    = 3
 )
 
 var (
@@ -73,19 +74,18 @@ func ParseJID(src string, jid *JID) error {
 	return nil
 }
 
-func (jid *JID) String() string {
-	return fmt.Sprintf("%s@%s%s", jid.Username, jid.Domain, jid.Resource)
+func (jid JID) String() string {
+	return fmt.Sprintf("%s@%s/%s", jid.Username, jid.Domain, strings.Trim(jid.Resource, "/"))
 }
 
-func (jid *JID) Equal(a *JID) bool {
+func (jid JID) Equal(a JID) bool {
 	return jid.Username == a.Username && jid.Domain == a.Domain && jid.Resource == a.Resource
 }
 
 type XChannel struct {
 	conn           io.ReadWriteCloser
-	decoder        *xml.Decoder
-	encoder        *xml.Encoder
 	isServer       bool
+	encoder        *xml.Encoder
 	state          int
 	waitSecOnClose int
 	parser         *Parser
@@ -95,9 +95,8 @@ type XChannel struct {
 func NewXChannel(conn Conn, isServer bool) *XChannel {
 	return &XChannel{
 		conn:           conn,
-		decoder:        xml.NewDecoder(conn),
-		encoder:        xml.NewEncoder(conn),
 		isServer:       isServer,
+		encoder:        xml.NewEncoder(conn),
 		state:          stateInit,
 		parser:         NewParser(conn, 1024*1024*2),
 		waitSecOnClose: 2,
@@ -129,27 +128,37 @@ func (xc *XChannel) WaitHeader(header *xml.StartElement) error {
 }
 
 func (xc *XChannel) NextElement(elem *stravaganza.Element) error {
-	var err error
-	*elem, err = xc.parser.NextElement()
-	if err == nil {
-		xc.logElement("RECV", *elem)
+	i, err := xc.next()
+	if err != nil {
+		return err
 	}
-	return err
+	switch t := i.(type) {
+	case stravaganza.Element:
+		*elem = t
+	default:
+		return ErrUnexpectedToken
+	}
+	return nil
 }
 
 func (xc *XChannel) next() (interface{}, error) {
+	if xc.state == stateClosed {
+		return nil, ErrChannelClosed
+	}
 	i, e := xc.parser.Next()
 	if e != nil {
 		return i, e
 	}
+	if _, ok := i.(xml.EndElement); ok {
+		xc.Close()
+		return nil, ErrChannelClosed
+	}
 	if xc.logger != nil {
 		switch t := i.(type) {
-		case xml.StartElement:
-			xc.logToken("RECV", t)
 		case stravaganza.Element:
 			xc.logElement("RECV", t)
 		default:
-			xc.logger.Printf(Debug, "RECV: %s", t)
+			xc.logToken("RECV", t)
 		}
 	}
 	return i, nil
@@ -168,25 +177,37 @@ func (xc *XChannel) Close() {
 	case stateClosed:
 		return
 	}
-	xc.SendToken(token)
+	if err := xc.SendToken(token); err != nil {
+		if xc.logger != nil {
+			xc.logger.Printf(Error, "send close stream token error: %s", err.Error())
+		}
+	}
 	xc.state = stateClosed
 	time.AfterFunc(time.Second*time.Duration(xc.waitSecOnClose), func() {
 		xc.conn.Close()
 	})
 }
 
-func (gs *XChannel) Open(attr *PartAttr) error {
-	gs.Send([]byte("<?xml version='1.0'?>"))
+func (xc *XChannel) Open(attr *PartAttr) error {
+	if attr.OpenTag {
+		xc.state = stateWSOpened
+	} else {
+		xc.state = stateTCPOpened
+	}
+	xc.Send([]byte("<?xml version='1.0'?>"))
 	var elem xml.StartElement
-	if gs.isServer {
+	if xc.isServer {
 		attr.ToClientHead(&elem)
-		return gs.SendToken(elem)
+		return xc.SendToken(elem)
 	}
 	attr.ToServerHead(&elem)
-	return gs.SendToken(elem)
+	return xc.SendToken(elem)
 }
 
 func (gs *XChannel) Send(bs []byte) error {
+	if gs.state == stateClosed {
+		return ErrChannelClosed
+	}
 	sent := 0
 	total := len(bs)
 	for sent < total {
@@ -197,18 +218,25 @@ func (gs *XChannel) Send(bs []byte) error {
 		sent = sent + s
 	}
 	if gs.logger != nil {
-		tmp := "SEND: \n%s"
-		if gs.isServer {
-			tmp = "server " + tmp
-		} else {
-			tmp = "client " + tmp
-		}
-		gs.logger.Printf(Debug, tmp, string(bs))
+		gs.logOther("SEND", string(bs))
 	}
 	return nil
 }
 
+func (gs *XChannel) logOther(rs, other interface{}) {
+	tmp := "%s: \n%v"
+	if gs.isServer {
+		tmp = "server [%d] " + tmp
+	} else {
+		tmp = "client [%d] " + tmp
+	}
+	gs.logger.Printf(Debug, tmp, gs.state, rs, other)
+}
+
 func (gs *XChannel) SendToken(token xml.Token) error {
+	if gs.state == stateClosed {
+		return ErrChannelClosed
+	}
 	err := gs.encoder.EncodeToken(token)
 	gs.encoder.Flush()
 	gs.logToken("SEND", token)
@@ -216,6 +244,9 @@ func (gs *XChannel) SendToken(token xml.Token) error {
 }
 
 func (gs *XChannel) SendElement(elem stravaganza.Element) error {
+	if gs.state == stateClosed {
+		return ErrChannelClosed
+	}
 	_, err := gs.conn.Write([]byte(elem.GoString()))
 	gs.logElement("SEND", elem)
 	return err
@@ -227,11 +258,11 @@ func (gs *XChannel) logElement(leading string, elem stravaganza.Element) {
 	}
 	tmp := leading + ": \n %s"
 	if gs.isServer {
-		tmp = "server " + tmp
+		tmp = "server [%d] " + tmp
 	} else {
-		tmp = "client " + tmp
+		tmp = "client [%d] " + tmp
 	}
-	gs.logger.Printf(Debug, tmp, elem.GoString())
+	gs.logger.Printf(Debug, tmp, gs.state, elem.GoString())
 }
 
 func (gs *XChannel) logToken(leading string, token xml.Token) {
@@ -240,11 +271,11 @@ func (gs *XChannel) logToken(leading string, token xml.Token) {
 	}
 	tmp := leading + ": "
 	if gs.isServer {
-		tmp = "server " + tmp
+		tmp = "server [%d] " + tmp
 	} else {
-		tmp = "client " + tmp
+		tmp = "client [%d] " + tmp
 	}
-	gs.logger.Printf(Debug, tmp)
+	gs.logger.Printf(Debug, tmp, gs.state)
 	encoder := xml.NewEncoder(gs.logger.Writer())
 	encoder.EncodeToken(token)
 	encoder.Flush()

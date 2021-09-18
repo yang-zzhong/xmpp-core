@@ -121,10 +121,10 @@ func (od *ClientPart) Stop() {
 func (od *ClientPart) handleFeatures(header xml.StartElement) error {
 	for {
 		features, err := od.serverFeatures()
+	handle:
 		if err != nil || len(features) == 0 {
 			return err
 		}
-	handle:
 		f, rest := od.selectOne(features)
 		handled, err := od.handle(f)
 		if err != nil {
@@ -174,15 +174,6 @@ func (od *ClientPart) selectOne(features []stravaganza.Element) (f stravaganza.E
 	rest = features[1:]
 	return
 }
-
-// func (od *ClientPart) containMandatories(elems []stravaganza.Element) bool {
-// 	for _, elem := range elems {
-// 		if od.isMandatory(elem) {
-// 			return true
-// 		}
-// 	}
-// 	return false
-// }
 
 func (od *ClientPart) isMandatory(elem stravaganza.Element) bool {
 	if elem.Name() == "starttls" || elem.Name() == "bind" {

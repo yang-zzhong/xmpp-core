@@ -132,7 +132,7 @@ func (ma *MemoryAuthorized) BindResource(part Part, resource string) (string, er
 
 func (ma *MemoryAuthorized) FindPart(jid *JID) Part {
 	for _, part := range ma.parts {
-		if jid.Equal(&part.Attr().JID) {
+		if jid.Equal(part.Attr().JID) {
 			return part
 		}
 	}
