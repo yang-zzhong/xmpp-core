@@ -150,7 +150,9 @@ func (s *Server) c2sHandler(conn xmppcore.Conn, connType xmppcore.ConnType) {
 	c2s.WithFeature(compress)
 	c2s.WithFeature(xmppcore.NewBindFeature(memoryAuthorized))
 	c2s.WithElemHandler(xmppcore.NewMessageRouter(memoryAuthorized))
-	if err := c2s.Run(); err != nil {
+	errChan := make(chan error)
+	c2s.Run(errChan)
+	if err := <-errChan; err != nil {
 		s.logger.Printf(xmppcore.Error, err.Error())
 	}
 }

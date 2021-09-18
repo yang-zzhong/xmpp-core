@@ -64,7 +64,7 @@ func (msg *MessageRouter) outClient(conn net.Conn, jid *JID, c2s Part) Part {
 		return nil
 	}
 	errChan := make(chan error)
-	part.Run(part, errChan)
+	part.Run(errChan)
 	time.Sleep(time.Second)
 	part.WithElemHandler(msg.hub)
 	msg.hub.AddRemote(jid.Domain, part)

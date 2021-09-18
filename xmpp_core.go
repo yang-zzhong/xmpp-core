@@ -285,11 +285,9 @@ func (part *XPart) WithFeature(f Feature) {
 	part.features = append(part.features, f)
 }
 
-func (part *XPart) Run() error {
+func (part *XPart) Run(errChan chan error) {
 	part.logger.Printf(Info, "part instance [%s] start running", part.attr.ID)
-	errChan := make(chan error)
 	part.ElemRunner.Run(part, errChan)
-	return <-errChan
 }
 
 func (part *XPart) Attr() *PartAttr {

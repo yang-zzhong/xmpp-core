@@ -139,6 +139,10 @@ func (od *ClientPart) handleFeatures(header xml.StartElement) error {
 	}
 }
 
+func (od *ClientPart) Run(errChan chan error) {
+	od.ElemRunner.Run(od, errChan)
+}
+
 func (od *ClientPart) handle(f stravaganza.Element) (handled bool, err error) {
 	for _, h := range od.features {
 		if h.Match(f) {
