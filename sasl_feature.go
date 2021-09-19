@@ -31,11 +31,9 @@ func AuthPayload(encoded string, payload *string) error {
 }
 
 func SaslFailureElem(tagName, desc string) stravaganza.Element {
-	err := []stravaganza.Element{stravaganza.NewBuilder(tagName).Build()}
-	if desc != "" {
-		err = append(err, stravaganza.NewBuilder("text").WithText(desc).WithAttribute("xml:lang", "en").Build())
-	}
-	return stravaganza.NewBuilder("failure").WithAttribute("xmlns", nsSASL).WithChildren(err...).Build()
+	var elem stravaganza.Element
+	Failure{Xmlns: nsSASL, MoreLang: "en", DescTag: tagName, More: desc}.ToElem(&elem)
+	return elem
 }
 
 func SaslFailureError(tagName, desc string) error {

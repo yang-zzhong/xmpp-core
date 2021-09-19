@@ -22,7 +22,7 @@ func (cbf *ClientBindFeature) Match(elem stravaganza.Element) bool {
 
 func (cbf *ClientBindFeature) Handle(elem stravaganza.Element, part Part) error {
 	var src stravaganza.Element
-	IqBind{IQ: IQ{ID: cbf.ID(), Type: IqSet}, Resource: cbf.resource}.ToElem(&src)
+	IqBind{IQ: Stanza{Name: NameIQ, ID: cbf.ID(), Type: StanzaSet}, Resource: cbf.resource}.ToElem(&src)
 
 	if err := part.Channel().SendElement(src); err != nil {
 		part.Logger().Printf(Error, "send bind message error: %s", err.Error())
@@ -35,10 +35,10 @@ func (cbf *ClientBindFeature) Handle(elem stravaganza.Element, part Part) error 
 		return errors.New("server bind error")
 	}
 	var ib IqBind
-	if err := IqBindFromElem(elem, &ib); err != nil {
+	if err := ib.FromElem(elem); err != nil {
 		return err
 	}
-	if ib.IQ.ID != cbf.ID() || ib.IQ.Type != IqResult {
+	if ib.IQ.ID != cbf.ID() || ib.IQ.Name != NameIQ || ib.IQ.Type != StanzaResult {
 		return errors.New("not a bind result")
 	}
 	var jid JID

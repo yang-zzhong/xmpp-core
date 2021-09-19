@@ -14,10 +14,21 @@ const (
 	LZW  = "lzw"
 )
 
-func CompressErrorElem(name string) stravaganza.Element {
-	return stravaganza.NewBuilder("failure").
-		WithAttribute(stravaganza.Namespace, nsCompress).
-		WithChild(stravaganza.NewBuilder(name).Build()).Build()
+type CompressFailure struct {
+	DescTag string
+}
+
+func (cf *CompressFailure) FromElem(elem stravaganza.Element) error {
+	f := Failure{}
+	if err := f.FromElem(elem, nsCompress); err != nil {
+		return err
+	}
+	cf.DescTag = f.DescTag
+	return nil
+}
+
+func (cf CompressFailure) ToElem(elem *stravaganza.Element) {
+	Failure{Xmlns: nsCompress, DescTag: cf.DescTag}.ToElem(elem)
 }
 
 type CompressionFeature struct {
@@ -60,11 +71,13 @@ func (cf *CompressionFeature) Match(elem stravaganza.Element) bool {
 func (cf *CompressionFeature) Handle(elem stravaganza.Element, part Part) error {
 	method := elem.Child("method")
 	if method == nil || len(method.Text()) == 0 {
-		return part.Channel().SendElement(CompressErrorElem(CESetupFailed))
+		CompressFailure{DescTag: CESetupFailed}.ToElem(&elem)
+		return part.Channel().SendElement(elem)
 	}
 	build, ok := cf.supported[method.Text()]
 	if !ok {
-		return part.Channel().SendElement(CompressErrorElem(CEUnsupportedMethod))
+		CompressFailure{DescTag: CEUnsupportedMethod}.ToElem(&elem)
+		return part.Channel().SendElement(elem)
 	}
 	if err := part.Channel().SendElement(stravaganza.NewBuilder("compressed").
 		WithAttribute(stravaganza.Namespace, nsCompress).

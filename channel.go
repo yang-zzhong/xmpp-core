@@ -75,7 +75,11 @@ func ParseJID(src string, jid *JID) error {
 }
 
 func (jid JID) String() string {
-	return fmt.Sprintf("%s@%s/%s", jid.Username, jid.Domain, strings.Trim(jid.Resource, "/"))
+	rsc := strings.Trim(jid.Resource, "/")
+	if rsc != "" {
+		return fmt.Sprintf("%s@%s/%s", jid.Username, jid.Domain, rsc)
+	}
+	return fmt.Sprintf("%s@%s", jid.Username, jid.Domain)
 }
 
 func (jid JID) Equal(a JID) bool {
