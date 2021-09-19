@@ -94,7 +94,8 @@ func (er *ElemRunner) Quit() {
 	er.channel.Close()
 }
 
-func (er *ElemRunner) Run(part Part, errChan chan error) {
+func (er *ElemRunner) Run(part Part) chan error {
+	errChan := make(chan error)
 	go func() {
 		i := 0
 		for {
@@ -138,6 +139,7 @@ func (er *ElemRunner) Run(part Part, errChan chan error) {
 			}
 		}
 	}()
+	return errChan
 }
 
 type PartAttr struct {
@@ -285,9 +287,9 @@ func (part *XPart) WithFeature(f Feature) {
 	part.features = append(part.features, f)
 }
 
-func (part *XPart) Run(errChan chan error) {
+func (part *XPart) Run() chan error {
 	part.logger.Printf(Info, "part instance [%s] start running", part.attr.ID)
-	part.ElemRunner.Run(part, errChan)
+	return part.ElemRunner.Run(part)
 }
 
 func (part *XPart) Attr() *PartAttr {
@@ -360,8 +362,7 @@ func (part *XPart) handleFeatures(header xml.StartElement) error {
 		if err := part.notifyFeatures(elems...); err != nil {
 			return err
 		}
-		errChan := make(chan error)
-		runner.Run(part, errChan)
+		errChan := runner.Run(part)
 		if err := <-errChan; err != nil {
 			return err
 		}

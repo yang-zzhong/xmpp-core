@@ -139,8 +139,8 @@ func (od *ClientPart) handleFeatures(header xml.StartElement) error {
 	}
 }
 
-func (od *ClientPart) Run(errChan chan error) {
-	od.ElemRunner.Run(od, errChan)
+func (od *ClientPart) Run() chan error {
+	return od.ElemRunner.Run(od)
 }
 
 func (od *ClientPart) handle(f stravaganza.Element) (handled bool, err error) {

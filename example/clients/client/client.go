@@ -44,9 +44,8 @@ func Start() {
 	if err := client.Negotiate(); err != nil {
 		fmt.Printf("client negotiate error: %s\n", err.Error())
 	}
-	errChan := make(chan error)
-	client.Run(errChan)
-	if err := <-errChan; err != nil {
+
+	if err := <-client.Run(); err != nil {
 		fmt.Printf("client error: %s\n", err.Error())
 	}
 	client.Stop()

@@ -4,7 +4,6 @@ import (
 	"crypto/tls"
 	"io"
 	"net"
-	"time"
 
 	"github.com/jackal-xmpp/stravaganza/v2"
 )
@@ -47,11 +46,14 @@ func (msg *MessageRouter) Handle(elem stravaganza.Element, part Part) error {
 	if err != nil {
 		return err
 	}
-	mp := msg.outClient(conn, &jid, part)
+	mp, err := msg.outClient(conn, &jid, part)
+	if err != nil {
+		return err
+	}
 	return mp.Channel().SendElement(elem)
 }
 
-func (msg *MessageRouter) outClient(conn net.Conn, jid *JID, c2s Part) Part {
+func (msg *MessageRouter) outClient(conn net.Conn, jid *JID, c2s Part) (Part, error) {
 	part := NewClientPart(NewTcpConn(conn, true), c2s.Logger(), &PartAttr{JID: *jid, Domain: c2s.Attr().Domain})
 	part.Channel().SetLogger(c2s.Logger())
 	part.WithFeature(&ClientTlsFeature{conf: &tls.Config{InsecureSkipVerify: true}})
@@ -61,14 +63,12 @@ func (msg *MessageRouter) outClient(conn net.Conn, jid *JID, c2s Part) Part {
 	})
 	part.WithFeature(ccf)
 	if err := part.Negotiate(); err != nil {
-		return nil
+		return part, err
 	}
-	errChan := make(chan error)
-	part.Run(errChan)
-	time.Sleep(time.Second)
+	part.Run()
 	part.WithElemHandler(msg.hub)
 	msg.hub.AddRemote(jid.Domain, part)
-	return part
+	return part, nil
 }
 
 type MsgHub struct {

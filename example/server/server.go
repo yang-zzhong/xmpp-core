@@ -74,17 +74,15 @@ func (s *Server) initConnGrabber(conf interface{}, builder connGrabberBuilder) {
 	s.wg.Add(1)
 	go func() {
 		for {
-			select {
-			case conn := <-connChan:
-				if conn == nil {
-					s.wg.Done()
-					return
-				}
-				s.conns = append(s.conns, conn)
-				go func() {
-					s.onConn(conn, grabber.For(), grabber.Type())
-				}()
+			conn := <-connChan
+			if conn == nil {
+				s.wg.Done()
+				return
 			}
+			s.conns = append(s.conns, conn)
+			go func() {
+				s.onConn(conn, grabber.For(), grabber.Type())
+			}()
 		}
 	}()
 }
@@ -150,9 +148,7 @@ func (s *Server) c2sHandler(conn xmppcore.Conn, connType xmppcore.ConnType) {
 	c2s.WithFeature(compress)
 	c2s.WithFeature(xmppcore.NewBindFeature(memoryAuthorized))
 	c2s.WithElemHandler(xmppcore.NewMessageRouter(memoryAuthorized))
-	errChan := make(chan error)
-	c2s.Run(errChan)
-	if err := <-errChan; err != nil {
+	if err := <-c2s.Run(); err != nil {
 		s.logger.Printf(xmppcore.Error, err.Error())
 	}
 }
