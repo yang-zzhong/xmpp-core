@@ -5,7 +5,7 @@ import (
 )
 
 const (
-	nsCompress = "http://jabber.org/protocol/compress"
+	NSCompress = "http://jabber.org/protocol/compress"
 
 	CESetupFailed       = "setup-failed"
 	CEUnsupportedMethod = "unsupported-method"
@@ -20,7 +20,7 @@ type CompressFailure struct {
 
 func (cf *CompressFailure) FromElem(elem stravaganza.Element) error {
 	f := Failure{}
-	if err := f.FromElem(elem, nsCompress); err != nil {
+	if err := f.FromElem(elem, NSCompress); err != nil {
 		return err
 	}
 	cf.DescTag = f.DescTag
@@ -28,62 +28,69 @@ func (cf *CompressFailure) FromElem(elem stravaganza.Element) error {
 }
 
 func (cf CompressFailure) ToElem(elem *stravaganza.Element) {
-	Failure{Xmlns: nsCompress, DescTag: cf.DescTag}.ToElem(elem)
+	Failure{Xmlns: NSCompress, DescTag: cf.DescTag}.ToElem(elem)
 }
 
-type CompressionFeature struct {
+type compressionFeature struct {
 	supported map[string]BuildCompressor
 	handled   bool
 	mandatory bool
-	*IDAble
+	IDAble
 }
 
-func NewCompressFeature() *CompressionFeature {
-	return &CompressionFeature{supported: make(map[string]BuildCompressor), handled: false, mandatory: false, IDAble: NewIDAble()}
+func CompressFeature() compressionFeature {
+	return compressionFeature{supported: make(map[string]BuildCompressor), handled: false, mandatory: false, IDAble: CreateIDAble()}
 }
 
-func (cf *CompressionFeature) Mandatory() bool {
+func (cf compressionFeature) Mandatory() bool {
 	return cf.mandatory
 }
 
-func (cf *CompressionFeature) Handled() bool {
+func (cf compressionFeature) Handled() bool {
 	return cf.handled
 }
 
-func (cf *CompressionFeature) Elem() stravaganza.Element {
+func (cf compressionFeature) Elem() stravaganza.Element {
 	children := []stravaganza.Element{}
 	for supported := range cf.supported {
 		children = append(children, stravaganza.NewBuilder("method").WithText(supported).Build())
 	}
 	return stravaganza.NewBuilder("compression").
-		WithAttribute(stravaganza.Namespace, nsCompress).
+		WithAttribute(stravaganza.Namespace, NSCompress).
 		WithChildren(children...).Build()
 }
 
-func (cf *CompressionFeature) Support(name string, build BuildCompressor) {
+func (cf *compressionFeature) Support(name string, build BuildCompressor) {
 	cf.supported[name] = build
 }
 
-func (cf *CompressionFeature) Match(elem stravaganza.Element) bool {
-	return elem.Name() == "compress" && elem.Attribute("xmlns") == nsCompress
+func (cf compressionFeature) Match(elem stravaganza.Element) bool {
+	return elem.Name() == "compress" && elem.Attribute("xmlns") == NSCompress
 }
 
-func (cf *CompressionFeature) Handle(elem stravaganza.Element, part Part) error {
+func (cf *compressionFeature) Handle(elem stravaganza.Element, part Part) (catched bool, err error) {
+	if !cf.Match(elem) {
+		return false, nil
+	}
+	catched = true
+	cf.handled = true
 	method := elem.Child("method")
 	if method == nil || len(method.Text()) == 0 {
 		CompressFailure{DescTag: CESetupFailed}.ToElem(&elem)
-		return part.Channel().SendElement(elem)
+		err = part.Channel().SendElement(elem)
+		return
 	}
 	build, ok := cf.supported[method.Text()]
 	if !ok {
 		CompressFailure{DescTag: CEUnsupportedMethod}.ToElem(&elem)
-		return part.Channel().SendElement(elem)
+		err = part.Channel().SendElement(elem)
+		return
 	}
-	if err := part.Channel().SendElement(stravaganza.NewBuilder("compressed").
-		WithAttribute(stravaganza.Namespace, nsCompress).
+	if err = part.Channel().SendElement(stravaganza.NewBuilder("compressed").
+		WithAttribute(stravaganza.Namespace, NSCompress).
 		Build()); err != nil {
-		return err
+		return
 	}
 	part.Conn().StartCompress(build)
-	return nil
+	return
 }

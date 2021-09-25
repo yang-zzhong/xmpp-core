@@ -15,7 +15,7 @@ type ClientPart struct {
 	attr     PartAttr
 	logger   Logger
 	conn     Conn
-	*ElemRunner
+	elemRunner
 }
 
 func NewClientPart(conn Conn, logger Logger, s *PartAttr) *ClientPart {
@@ -27,7 +27,7 @@ func NewClientPart(conn Conn, logger Logger, s *PartAttr) *ClientPart {
 		features:   []ElemHandler{},
 		channel:    channel,
 		logger:     logger,
-		ElemRunner: NewElemRunner(channel),
+		elemRunner: ElemRunner(channel),
 		attr:       *s,
 		conn:       conn,
 	}
@@ -140,14 +140,13 @@ func (od *ClientPart) handleFeatures(header xml.StartElement) error {
 }
 
 func (od *ClientPart) Run() chan error {
-	return od.ElemRunner.Run(od)
+	return od.elemRunner.Run(od)
 }
 
 func (od *ClientPart) handle(f stravaganza.Element) (handled bool, err error) {
 	for _, h := range od.features {
-		if h.Match(f) {
-			handled = true
-			if err = h.Handle(f, od); err != nil {
+		if handled, err = h.Handle(f, od); handled {
+			if err != nil {
 				return
 			}
 			break

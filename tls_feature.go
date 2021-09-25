@@ -6,61 +6,64 @@ import (
 	"github.com/jackal-xmpp/stravaganza/v2"
 )
 
-type TlsFeature struct {
+type tlsFeature struct {
 	certFile  string
 	keyFile   string
 	mandatory bool
 
 	handled bool
-	*IDAble
+	IDAble
 }
 
 func TlsFailureElem() stravaganza.Element {
-	return stravaganza.NewBuilder("failure").WithAttribute("xmlns", nsTLS).Build()
+	return stravaganza.NewBuilder("failure").WithAttribute("xmlns", NSTls).Build()
 }
 
 const (
-	nsTLS = "urn:ietf:params:xml:ns:xmpp-tls"
+	NSTls = "urn:ietf:params:xml:ns:xmpp-tls"
 )
 
-func NewTlsFeature(certFile, keyFile string, mandatory bool) *TlsFeature {
-	return &TlsFeature{
+func TlsFeature(certFile, keyFile string, mandatory bool) tlsFeature {
+	return tlsFeature{
 		certFile:  certFile,
 		keyFile:   keyFile,
 		mandatory: mandatory,
 		handled:   false,
-		IDAble:    NewIDAble()}
+		IDAble:    CreateIDAble()}
 }
 
-func (tf *TlsFeature) Elem() stravaganza.Element {
+func (tf tlsFeature) Elem() stravaganza.Element {
 	elem := stravaganza.NewBuilder("starttls").
-		WithAttribute("xmlns", nsTLS)
+		WithAttribute("xmlns", NSTls)
 	elem.WithChild(stravaganza.NewBuilder("required").Build())
 	return elem.Build()
 }
 
-func (tf *TlsFeature) Mandatory() bool {
+func (tf tlsFeature) Mandatory() bool {
 	return true
 }
 
-func (tf *TlsFeature) Match(elem stravaganza.Element) bool {
-	return elem.Name() == "starttls" && elem.Attribute("xmlns") == nsTLS
+func (tf tlsFeature) Match(elem stravaganza.Element) bool {
+	return elem.Name() == "starttls" && elem.Attribute("xmlns") == NSTls
 }
 
-func (tf *TlsFeature) Handle(_ stravaganza.Element, part Part) error {
+func (tf *tlsFeature) Handle(elem stravaganza.Element, part Part) (catched bool, err error) {
+	if !tf.Match(elem) {
+		return false, nil
+	}
 	tf.handled = true
 	cert, err := tls.LoadX509KeyPair(tf.certFile, tf.keyFile)
 	if err != nil {
 		part.Channel().SendElement(TlsFailureElem())
-		part.Logger().Printf(Error, "create tls cert error: %s\n", err.Error())
-		return err
+		part.Logger().Printf(LogError, "create tls cert error: %s\n", err.Error())
+		return
 	}
-	msg := stravaganza.NewBuilder("proceed").WithAttribute("xmlns", nsTLS).Build()
+	msg := stravaganza.NewBuilder("proceed").WithAttribute("xmlns", NSTls).Build()
 	part.Channel().SendElement(msg)
 	part.Conn().StartTLS(&tls.Config{Certificates: []tls.Certificate{cert}})
-	return nil
+	return
 }
 
-func (tf *TlsFeature) Handled() bool {
+func (tf tlsFeature) Handled() bool {
 	return tf.handled
 }

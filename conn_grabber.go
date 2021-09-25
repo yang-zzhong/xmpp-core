@@ -65,11 +65,11 @@ func (wsc *WsConnGrabber) Grab(connChan chan Conn) error {
 	mux.Handle(wsc.path, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		wsconn, e := wsc.upgrader.Upgrade(w, r, nil)
 		if e != nil {
-			wsc.logger.Printf(Error, "upgrade ws conn err: %s\n", e.Error())
+			wsc.logger.Printf(LogError, "upgrade ws conn err: %s\n", e.Error())
 			return
 		}
 		uc := wsconn.UnderlyingConn()
-		wsc.logger.Printf(Info, "comming a ws connection from %s\n", uc.RemoteAddr().String())
+		wsc.logger.Printf(LogInfo, "comming a ws connection from %s\n", uc.RemoteAddr().String())
 		c, _ := uc.(*net.TCPConn)
 		connChan <- NewTcpConn(c, false)
 	}))
@@ -82,7 +82,7 @@ func (wsc *WsConnGrabber) Grab(connChan chan Conn) error {
 		defer func() {
 			wsc.grabbing = false
 		}()
-		wsc.logger.Printf(Info, "ws connection listen on %s for C2S\n", wsc.listenOn)
+		wsc.logger.Printf(LogInfo, "ws connection listen on %s for C2S\n", wsc.listenOn)
 		var err error
 		if wsc.certFile != "" && wsc.keyFile != "" {
 			err = wsc.srv.ListenAndServeTLS(wsc.certFile, wsc.keyFile)
@@ -90,10 +90,10 @@ func (wsc *WsConnGrabber) Grab(connChan chan Conn) error {
 			err = wsc.srv.ListenAndServe()
 		}
 		if err != nil {
-			wsc.logger.Printf(Info, "ws conn server close unexpected: %s\n", err.Error())
+			wsc.logger.Printf(LogInfo, "ws conn server close unexpected: %s\n", err.Error())
 			return
 		}
-		wsc.logger.Printf(Info, "ws server quit normally\n")
+		wsc.logger.Printf(LogInfo, "ws server quit normally\n")
 	}()
 	return nil
 }
@@ -157,7 +157,7 @@ func (tc *TcpConnGrabber) Grab(connChan chan Conn) error {
 	} else {
 		tc.ln, err = net.Listen("tcp", tc.listenOn)
 	}
-	tc.logger.Printf(Info, "tcp connection Listen on %s for %s\n", tc.listenOn, tc.connFor)
+	tc.logger.Printf(LogInfo, "tcp connection Listen on %s for %s\n", tc.listenOn, tc.connFor)
 	if err != nil {
 		return err
 	}
@@ -180,7 +180,7 @@ func (tc *TcpConnGrabber) Grab(connChan chan Conn) error {
 					close(connChan)
 					return
 				}
-				tc.logger.Printf(Info, "comming a tcp connection from %s on %s\n", conn.RemoteAddr().String(), tc.listenOn)
+				tc.logger.Printf(LogInfo, "comming a tcp connection from %s on %s\n", conn.RemoteAddr().String(), tc.listenOn)
 				connChan <- NewTcpConn(conn, false)
 			}
 		}

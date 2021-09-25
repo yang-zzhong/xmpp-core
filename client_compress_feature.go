@@ -4,24 +4,28 @@ import (
 	"github.com/jackal-xmpp/stravaganza/v2"
 )
 
-type ClientCompressFeature struct {
+type clientCompressFeature struct {
 	supported map[string]BuildCompressor
-	*IDAble
+	IDAble
 }
 
-func NewClientCompressFeature() *ClientCompressFeature {
-	return &ClientCompressFeature{supported: make(map[string]BuildCompressor), IDAble: NewIDAble()}
+func ClientCompressFeature() clientCompressFeature {
+	return clientCompressFeature{supported: make(map[string]BuildCompressor), IDAble: CreateIDAble()}
 }
 
-func (ccf *ClientCompressFeature) Support(name string, b BuildCompressor) {
+func (ccf *clientCompressFeature) Support(name string, b BuildCompressor) {
 	ccf.supported[name] = b
 }
 
-func (ccf *ClientCompressFeature) Match(elem stravaganza.Element) bool {
+func (ccf clientCompressFeature) Match(elem stravaganza.Element) bool {
 	return elem.Name() == "compression"
 }
 
-func (ccf *ClientCompressFeature) Handle(elem stravaganza.Element, part Part) error {
+func (ccf clientCompressFeature) Handle(elem stravaganza.Element, part Part) (catched bool, err error) {
+	if !ccf.Match(elem) {
+		return false, nil
+	}
+	catched = true
 	methods := elem.AllChildren()
 	var selected string
 	for _, m := range methods {
@@ -31,17 +35,17 @@ func (ccf *ClientCompressFeature) Handle(elem stravaganza.Element, part Part) er
 		}
 	}
 	compress := stravaganza.NewBuilder("compress").
-		WithAttribute("xmlns", nsCompress).
+		WithAttribute("xmlns", NSCompress).
 		WithChild(stravaganza.NewBuilder("method").WithText(selected).Build()).Build()
 
-	if err := part.Channel().SendElement(compress); err != nil {
-		return err
+	if err = part.Channel().SendElement(compress); err != nil {
+		return
 	}
-	if err := part.Channel().NextElement(&elem); err != nil {
-		return err
+	if err = part.Channel().NextElement(&elem); err != nil {
+		return
 	}
 	if elem.Name() == "compressed" {
 		part.Conn().StartCompress(ccf.supported[selected])
 	}
-	return nil
+	return
 }

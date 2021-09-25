@@ -126,11 +126,12 @@ func (s *Server) onConn(conn xmppcore.Conn, connFor xmppcore.ConnFor, connType x
 func (s *Server) c2sHandler(conn xmppcore.Conn, connType xmppcore.ConnType) {
 	c2s := xmppcore.NewXPart(conn, s.config.Domain, s.logger)
 	c2s.Channel().SetLogger(s.logger)
-	sasl := xmppcore.NewSASLFeature(memoryAuthorized)
+	sasl := xmppcore.SASLFeature(memoryAuthorized)
 	sasl.Support(xmppcore.SM_PLAIN, xmppcore.NewPlainAuth(memoryPlainAuthUserFetcher, md5.New))
 	if s.config.CertFile != "" && s.config.KeyFile != "" || connType == xmppcore.TLSConn || connType == xmppcore.WSTLSConn {
 		if connType == xmppcore.TCPConn || connType == xmppcore.WSConn {
-			c2s.WithFeature(xmppcore.NewTlsFeature(s.config.CertFile, s.config.KeyFile, true))
+			tls := xmppcore.TlsFeature(s.config.CertFile, s.config.KeyFile, true)
+			c2s.WithFeature(&tls)
 		}
 		sasl.Support(xmppcore.SM_SCRAM_SHA_1_PLUS, xmppcore.NewScramAuth(memoryAuthUserFetcher, sha1.New, true))
 		sasl.Support(xmppcore.SM_SCRAM_SHA_256_PLUS, xmppcore.NewScramAuth(memoryAuthUserFetcher, sha256.New, true))
@@ -140,16 +141,16 @@ func (s *Server) c2sHandler(conn xmppcore.Conn, connType xmppcore.ConnType) {
 		sasl.Support(xmppcore.SM_SCRAM_SHA_256, xmppcore.NewScramAuth(memoryAuthUserFetcher, sha256.New, true))
 		sasl.Support(xmppcore.SM_SCRAM_SHA_512, xmppcore.NewScramAuth(memoryAuthUserFetcher, sha512.New, true))
 	}
-	c2s.WithFeature(sasl)
-	compress := xmppcore.NewCompressFeature()
+	c2s.WithFeature(&sasl)
+	compress := xmppcore.CompressFeature()
 	compress.Support(xmppcore.ZLIB, func(conn io.ReadWriter) xmppcore.Compressor {
 		return xmppcore.NewCompZlib(conn)
 	})
-	c2s.WithFeature(compress)
-	c2s.WithFeature(xmppcore.NewBindFeature(memoryAuthorized))
-	c2s.WithElemHandler(xmppcore.NewMessageRouter(memoryAuthorized))
+	c2s.WithFeature(&compress)
+	bind := xmppcore.BindFeature(memoryAuthorized)
+	c2s.WithFeature(&bind)
 	if err := <-c2s.Run(); err != nil {
-		s.logger.Printf(xmppcore.Error, err.Error())
+		s.logger.Printf(xmppcore.LogError, err.Error())
 	}
 }
 

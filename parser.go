@@ -16,18 +16,6 @@ const (
 	openName   = "open"
 )
 
-// ParsingMode defines the way in which special parsed element
-// should be considered or not according to the reader nature.
-type ParsingMode int
-
-const (
-	// DefaultMode treats incoming elements as provided from raw byte reader.
-	DefaultMode = ParsingMode(iota)
-
-	// SocketStream treats incoming elements as provided from a socket transport.
-	SocketStream
-)
-
 // ErrTooLargeStanza will be returned Parse when the size of the incoming stanza is too large.
 var ErrTooLargeStanza = errors.New("parser: too large stanza")
 
@@ -42,7 +30,6 @@ var ErrNoElement = errors.New("parser: no elements")
 // Parser parses arbitrary XML input and builds an array with the structure of all tag and data elements.
 type Parser struct {
 	dec           *xml.Decoder
-	mode          ParsingMode
 	nextElement   stravaganza.Element
 	stack         []*stravaganza.Builder
 	pIndex        int
@@ -54,7 +41,6 @@ type Parser struct {
 // New creates an empty Parser instance.
 func NewParser(reader io.Reader, maxStanzaSize int) *Parser {
 	return &Parser{
-		mode:          SocketStream,
 		dec:           xml.NewDecoder(reader),
 		pIndex:        rootElementIndex,
 		maxStanzaSize: int64(maxStanzaSize),
@@ -82,7 +68,7 @@ func (p *Parser) Next() (interface{}, error) {
 			return t1, nil
 		case xml.StartElement:
 			// got <stream>/<open>
-			if p.mode == SocketStream && (t1.Name.Local == streamName || t1.Name.Local == openName) {
+			if t1.Name.Local == streamName || t1.Name.Local == openName {
 				p.lastOffset = p.dec.InputOffset()
 				p.nextElement = nil
 				return t1, nil
@@ -99,7 +85,7 @@ func (p *Parser) Next() (interface{}, error) {
 			}
 			p.setElementText(t1)
 		case xml.EndElement:
-			if p.mode == SocketStream && t1.Name.Local == streamName {
+			if t1.Name.Local == streamName {
 				p.lastOffset = p.dec.InputOffset()
 				p.nextElement = nil
 				return t1, nil
@@ -129,14 +115,6 @@ func (p *Parser) charData(bs xml.CharData) error {
 	}
 	return nil
 }
-
-// func (p *Parser) logToken(token xml.Token) {
-// 	var buf bytes.Buffer
-// 	en := xml.NewEncoder(&buf)
-// 	en.EncodeToken(token)
-// 	en.Flush()
-// 	fmt.Printf("token: %s\n", buf.String())
-// }
 
 func (p *Parser) startElement(t xml.StartElement) {
 	name := t.Name.Local

@@ -19,22 +19,38 @@ const (
 	NameIQ       = "iq"
 	NamePresence = "presence"
 	NameMsg      = "message"
+	// for iq
+	TypeGet    = StanzaType("get")
+	TypeSet    = StanzaType("set")
+	TypeResult = StanzaType("result")
+	TypeError  = StanzaType("error")
 
-	StanzaGet    = StanzaType("get")
-	StanzaSet    = StanzaType("set")
-	StanzaResult = StanzaType("result")
-	StanzaError  = StanzaType("error")
+	// for presence
+	TypeSub         = StanzaType("subscribe")
+	TypeUnsub       = StanzaType("unsubscribe")
+	TypeSubed       = StanzaType("subscribed")
+	TypeUnsubed     = StanzaType("unsubscribed")
+	TypeUnavailable = StanzaType("unavailable")
 )
 
 var (
 	ErrNotRequiredFailure = errors.New("parsed element not a required failure")
-	ErrStanzaType         = errors.New("stanza type error")
+	ErrNotStanzaErr       = errors.New("not stanza error")
 )
 
+type ElementableError interface {
+	error
+	ToElem(*stravaganza.Element)
+}
+
+type ErrDesc struct {
+	Tag   string
+	Xmlns string
+}
+
 type Err struct {
-	Type    string
-	DescTag string
-	Xmlns   string
+	Type string
+	Desc []ErrDesc
 }
 
 type Stanza struct {
@@ -47,10 +63,9 @@ type Stanza struct {
 
 func (err *Err) FromElem(elem stravaganza.Element) {
 	err.Type = elem.Attribute("type")
-	ec := elem.AllChildren()
-	if len(ec) > 0 {
-		err.DescTag = ec[0].Name()
-		err.Xmlns = ec[0].Attribute("xmlns")
+	err.Desc = []ErrDesc{}
+	for _, desc := range elem.AllChildren() {
+		err.Desc = append(err.Desc, ErrDesc{Tag: desc.Name(), Xmlns: desc.Attribute("xmlns")})
 	}
 }
 
@@ -59,14 +74,22 @@ func (err Err) ToElem(elem *stravaganza.Element) {
 	if err.Type != "" {
 		ee.WithAttribute("type", err.Type)
 	}
-	if err.DescTag != "" {
-		ee.WithChild(stravaganza.NewBuilder(err.DescTag).WithAttribute("xmlns", err.Xmlns).Build())
+	elems := []stravaganza.Element{}
+	for _, desc := range err.Desc {
+		elems = append(elems, stravaganza.NewBuilder(desc.Tag).WithAttribute("xmlns", desc.Xmlns).Build())
 	}
-	*elem = ee.Build()
+	*elem = ee.WithChildren(elems...).Build()
 }
 
-func (err *Err) Error() string {
-	return strings.ReplaceAll(err.DescTag, "-", " ")
+func (err Err) Error() string {
+	msg := ""
+	for i, desc := range err.Desc {
+		if i < len(err.Desc)-1 {
+			msg = msg + ":"
+		}
+		msg = msg + strings.ReplaceAll(desc.Tag, "-", " ")
+	}
+	return msg
 }
 
 func (stanza *Stanza) FromElem(elem stravaganza.Element, name string) error {
@@ -75,11 +98,7 @@ func (stanza *Stanza) FromElem(elem stravaganza.Element, name string) error {
 		return fmt.Errorf("not a stanza %s element", name)
 	}
 	stanza.ID = elem.Attribute("id")
-	var err error
-	stanza.Type, err = GetStanzaType(elem.Attribute("type"))
-	if err != nil {
-		return err
-	}
+	stanza.Type = StanzaType(elem.Attribute("type"))
 	stanza.From = elem.Attribute("from")
 	stanza.To = elem.Attribute("to")
 	return nil
@@ -96,14 +115,6 @@ func (stanza Stanza) ToElemBuilder() *stravaganza.Builder {
 		iqe.WithAttribute("to", stanza.To)
 	}
 	return iqe
-}
-
-func GetStanzaType(typ string) (StanzaType, error) {
-	t := StanzaType(typ)
-	if t != StanzaGet && t != StanzaSet && t != StanzaResult && t != StanzaError {
-		return t, ErrStanzaType
-	}
-	return t, nil
 }
 
 type Failure struct {
@@ -142,4 +153,53 @@ func (f Failure) ToElem(elem *stravaganza.Element) {
 		err = append(err, more.Build())
 	}
 	*elem = stravaganza.NewBuilder("failure").WithChildren(err...).Build()
+}
+
+func (f Failure) Error() string {
+	return strings.ReplaceAll(f.DescTag, "-", " ")
+}
+
+type StanzaErr struct {
+	Stanza Stanza
+	Err    Err
+}
+
+func (se StanzaErr) ToElem(elem *stravaganza.Element) {
+	var err stravaganza.Element
+	se.Err.ToElem(&err)
+	*elem = se.Stanza.ToElemBuilder().WithChild(err).Build()
+}
+
+func (se *StanzaErr) FromElem(elem stravaganza.Element, name string) error {
+	if err := se.Stanza.FromElem(elem, name); err != nil {
+		return err
+	}
+	if se.Stanza.Type != TypeError {
+		return ErrNotStanzaErr
+	}
+	if err := elem.Child("error"); err != nil {
+		se.Err.FromElem(elem.Child("error"))
+	}
+	return nil
+}
+
+type IqErrHandler interface {
+	HandleIqError(StanzaErr, Part) error
+}
+
+type StanzaErrHandler struct {
+	Name             string
+	lastMatchedError StanzaErr
+	handler          IqErrHandler
+}
+
+func (seh *StanzaErrHandler) Match(elem stravaganza.Element) bool {
+	if err := seh.lastMatchedError.FromElem(elem, seh.Name); err != nil {
+		return false
+	}
+	return true
+}
+
+func (seh StanzaErrHandler) Handle(_ stravaganza.Element, part Part) error {
+	return seh.handler.HandleIqError(seh.lastMatchedError, part)
 }

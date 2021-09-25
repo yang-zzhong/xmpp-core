@@ -23,7 +23,7 @@ func (ib *IqBind) FromElem(elem stravaganza.Element) error {
 	}
 	if b := elem.Child("bind"); b == nil {
 		return ErrNotIqBind
-	} else if b.Name() != "bind" || b.Attribute("xmlns") != nsBind {
+	} else if b.Name() != "bind" || b.Attribute("xmlns") != NSBind {
 		return ErrNotIqBind
 	} else if r := b.Child("resource"); r != nil {
 		ib.Resource = r.Text()
@@ -34,36 +34,21 @@ func (ib *IqBind) FromElem(elem stravaganza.Element) error {
 }
 
 func (ib IqBind) ToElem(elem *stravaganza.Element) {
-	b := stravaganza.NewBuilder("bind").WithAttribute("xmlns", nsBind)
-	if ib.IQ.Type == StanzaSet && ib.Resource != "" {
+	b := stravaganza.NewBuilder("bind").WithAttribute("xmlns", NSBind)
+	if ib.IQ.Type == TypeSet && ib.Resource != "" {
 		b.WithChild(stravaganza.NewBuilder("resource").WithText(ib.Resource).Build())
-	} else if ib.IQ.Type == StanzaResult && ib.JID != "" {
+	} else if ib.IQ.Type == TypeResult && ib.JID != "" {
 		b.WithChild(stravaganza.NewBuilder("jid").WithText(ib.JID).Build())
 	}
 	*elem = ib.IQ.ToElemBuilder().WithChild(b.Build()).Build()
 }
 
-type BindErr struct {
-	ID      string
-	Type    string
-	DescTag string
-}
-
-func (be BindErr) ToElem(elem *stravaganza.Element) {
-	var err stravaganza.Element
-	Err{Type: be.Type, Xmlns: nsStanza, DescTag: be.DescTag}.ToElem(&err)
-	*elem = Stanza{Name: NameIQ, ID: be.ID, Type: StanzaError}.
-		ToElemBuilder().
-		WithChild(err).Build()
-
-}
-
-type BindFeature struct {
+type bindFeature struct {
 	rsb       ResourceBinder
 	handled   bool
 	mandatory bool
 	ib        IqBind
-	*IDAble
+	IDAble
 }
 
 type ResourceBinder interface {
@@ -71,61 +56,74 @@ type ResourceBinder interface {
 }
 
 const (
-	nsBind   = "urn:ietf:params:xml:ns:xmpp-bind"
-	nsStanza = "urn:ietf:params:xml:ns:xmpp-stanzas"
+	NSBind   = "urn:ietf:params:xml:ns:xmpp-bind"
+	NSStanza = "urn:ietf:params:xml:ns:xmpp-stanzas"
 
 	BEResourceConstraint = "wait: resource constraint"
 	BENotAllowed         = "cancel: not allowed"
 )
 
-func BindErrFromError(id string, err error) BindErr {
+func BindErrFromError(id string, err error) StanzaErr {
 	ss := strings.Split(err.Error(), ":")
 	errTag := strings.Trim(ss[1], " ")
-	return BindErr{ID: id, Type: ss[0], DescTag: errTag}
+	return StanzaErr{
+		Stanza: Stanza{
+			ID:   id,
+			Type: TypeError,
+		}, Err: Err{
+			Type: ss[0],
+			Desc: []ErrDesc{{Tag: errTag, Xmlns: NSStanza}},
+		},
+	}
 }
 
-func NewBindFeature(rsb ResourceBinder) *BindFeature {
-	return &BindFeature{IDAble: NewIDAble(), rsb: rsb, handled: false, mandatory: false}
+func BindFeature(rsb ResourceBinder) bindFeature {
+	return bindFeature{IDAble: CreateIDAble(), rsb: rsb, handled: false, mandatory: false}
 }
 
-func (bf *BindFeature) Mandatory() bool {
+func (bf bindFeature) Mandatory() bool {
 	return bf.mandatory
 }
 
-func (bf *BindFeature) Elem() stravaganza.Element {
-	elem := stravaganza.NewBuilder("bind").WithAttribute("xmlns", nsBind)
+func (bf bindFeature) Elem() stravaganza.Element {
+	elem := stravaganza.NewBuilder("bind").WithAttribute("xmlns", NSBind)
 	if bf.mandatory {
 		elem.WithChild(stravaganza.NewBuilder("required").Build())
 	}
 	return elem.Build()
 }
 
-func (bf *BindFeature) Match(elem stravaganza.Element) bool {
+func (bf *bindFeature) match(elem stravaganza.Element) bool {
 	if err := bf.ib.FromElem(elem); err != nil {
 		return false
 	}
-	if bf.ib.IQ.Type != StanzaSet || bf.ib.IQ.Name != NameIQ || bf.ib.IQ.ID == "" {
+	if bf.ib.IQ.Type != TypeSet || bf.ib.IQ.Name != NameIQ || bf.ib.IQ.ID == "" {
 		return false
 	}
 	return true
 }
 
-func (bf *BindFeature) Handled() bool {
+func (bf bindFeature) Handled() bool {
 	return bf.handled
 }
 
-func (bf *BindFeature) Handle(elem stravaganza.Element, part Part) error {
+func (bf *bindFeature) Handle(elem stravaganza.Element, part Part) (cached bool, err error) {
+	if !bf.match(elem) {
+		return false, nil
+	}
 	bf.handled = true
 	rsc, err := bf.rsb.BindResource(part, bf.ib.Resource)
 	if err != nil {
 		BindErrFromError(bf.ib.IQ.ID, err).ToElem(&elem)
 		part.Channel().SendElement(elem)
-		return err
+		return
 	}
-	iq := bf.ib.IQ
-	iq.Type = StanzaResult
-	iq.To = iq.From
-	iq.From = part.Attr().Domain
-	IqBind{IQ: iq, JID: rsc}.ToElem(&elem)
-	return part.Channel().SendElement(elem)
+	IqBind{IQ: Stanza{
+		ID:   bf.ib.IQ.ID,
+		Name: NameIQ,
+		Type: TypeResult,
+		To:   bf.ib.IQ.From,
+		From: part.Attr().Domain}, JID: rsc}.ToElem(&elem)
+	err = part.Channel().SendElement(elem)
+	return
 }

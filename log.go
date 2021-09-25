@@ -10,14 +10,11 @@ type LogLevel int
 type LogMode int
 
 const (
-	Debug   = LogLevel(0)
-	Info    = LogLevel(1)
-	Warning = LogLevel(2)
-	Error   = LogLevel(3)
-	Fatal   = LogLevel(4)
-
-	DebugMode      = LogMode(0)
-	ProductionMode = LogMode(1)
+	LogDebug   = LogLevel(0)
+	LogInfo    = LogLevel(1)
+	LogWarning = LogLevel(2)
+	LogError   = LogLevel(3)
+	LogFatal   = LogLevel(4)
 )
 
 type Logger interface {
@@ -27,15 +24,15 @@ type Logger interface {
 
 type XLogger struct {
 	underlying *log.Logger
-	mode       LogMode
+	level      LogLevel
 }
 
 func NewLogger(w io.Writer) *XLogger {
-	return &XLogger{log.New(w, "", log.Ltime), DebugMode}
+	return &XLogger{log.New(w, "", log.Ltime), LogDebug}
 }
 
-func (logger *XLogger) SetMode(mode LogMode) {
-	logger.mode = mode
+func (logger *XLogger) SetLogLevel(level LogLevel) {
+	logger.level = level
 }
 
 func (logger *XLogger) Writer() io.Writer {
@@ -43,19 +40,10 @@ func (logger *XLogger) Writer() io.Writer {
 }
 
 func (logger *XLogger) Printf(level LogLevel, format string, v ...interface{}) {
-	lowest := Debug
-	if logger.mode == ProductionMode {
-		lowest = Info
-	}
-	if level < lowest {
+	if logger.level > level {
 		return
 	}
 	logger.underlying.Printf("%s: %s", logger.levelString(level), fmt.Sprintf(format, v...))
-	// if level == Error || level == Fatal {
-	// 	buf := make([]byte, 1<<16)
-	// 	runtime.Stack(buf, false)
-	// 	logger.underlying.Printf("******************* STACK ********************* \n %s \n        ******************** END STACK ********************\n", string(buf))
-	// }
 }
 
 func (logger *XLogger) levelString(level LogLevel) string {

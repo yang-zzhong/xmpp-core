@@ -28,13 +28,13 @@ func Start() {
 		Domain:  "hello-world.im",
 	}
 	toAuth := xmppcore.NewScramToAuth("test", "123456", xmppcore.SM_SCRAM_SHA_256_PLUS, true)
-	sasl := xmppcore.NewClientSASLFeature()
+	sasl := xmppcore.ClientSASLFeature()
 	sasl.Support(xmppcore.SM_SCRAM_SHA_256_PLUS, toAuth)
 	logger := xmppcore.NewLogger(os.Stdout)
 	client := xmppcore.NewClientPart(xmppcore.NewTcpConn(conn, true), logger, &attr)
-	client.WithFeature(xmppcore.NewClientTlsFeature(&tls.Config{InsecureSkipVerify: true}))
+	client.WithFeature(xmppcore.ClientTlsFeature(&tls.Config{InsecureSkipVerify: true}))
 	client.WithFeature(sasl)
-	client.WithFeature(xmppcore.NewClientBindFeature(&clientResourceBinder{}, "xmpp-core-test"))
+	client.WithFeature(xmppcore.ClientBindFeature(&clientResourceBinder{}, "xmpp-core-test"))
 	// comp := xmppcore.NewClientCompressFeature()
 	// comp.Support(xmppcore.ZLIB, func(rw io.ReadWriter) xmppcore.Compressor {
 	// 	return xmppcore.NewCompZlib(rw)

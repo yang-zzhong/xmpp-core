@@ -6,43 +6,48 @@ import (
 	"github.com/jackal-xmpp/stravaganza/v2"
 )
 
-type ClientBindFeature struct {
+type clientBindFeature struct {
 	rb       ResourceBinder
 	resource string
-	*IDAble
+	IDAble
 }
 
-func NewClientBindFeature(rb ResourceBinder, resource string) *ClientBindFeature {
-	return &ClientBindFeature{rb: rb, IDAble: NewIDAble(), resource: resource}
+func ClientBindFeature(rb ResourceBinder, resource string) clientBindFeature {
+	return clientBindFeature{rb: rb, IDAble: CreateIDAble(), resource: resource}
 }
 
-func (cbf *ClientBindFeature) Match(elem stravaganza.Element) bool {
-	return elem.Name() == "bind" && elem.Attribute("xmlns") == nsBind
+func (cbf clientBindFeature) Match(elem stravaganza.Element) bool {
+	return elem.Name() == "bind" && elem.Attribute("xmlns") == NSBind
 }
 
-func (cbf *ClientBindFeature) Handle(elem stravaganza.Element, part Part) error {
+func (cbf clientBindFeature) Handle(elem stravaganza.Element, part Part) (catched bool, err error) {
+	if !cbf.Match(elem) {
+		return false, nil
+	}
+	catched = true
 	var src stravaganza.Element
-	IqBind{IQ: Stanza{Name: NameIQ, ID: cbf.ID(), Type: StanzaSet}, Resource: cbf.resource}.ToElem(&src)
-
-	if err := part.Channel().SendElement(src); err != nil {
-		part.Logger().Printf(Error, "send bind message error: %s", err.Error())
-		return err
+	IqBind{IQ: Stanza{Name: NameIQ, ID: cbf.ID(), Type: TypeSet}, Resource: cbf.resource}.ToElem(&src)
+	if err = part.Channel().SendElement(src); err != nil {
+		part.Logger().Printf(LogError, "send bind message error: %s", err.Error())
+		return
 	}
-	if err := part.Channel().NextElement(&elem); err != nil {
-		return err
+	if err = part.Channel().NextElement(&elem); err != nil {
+		return
 	}
-	if elem.Attribute("type") == "error" {
-		return errors.New("server bind error")
+	var ie StanzaErr
+	if e := ie.FromElem(elem, NameIQ); e == nil {
+		err = ie.Err
 	}
 	var ib IqBind
-	if err := ib.FromElem(elem); err != nil {
-		return err
+	if err = ib.FromElem(elem); err != nil {
+		return
 	}
-	if ib.IQ.ID != cbf.ID() || ib.IQ.Name != NameIQ || ib.IQ.Type != StanzaResult {
-		return errors.New("not a bind result")
+	if ib.IQ.ID != cbf.ID() {
+		err = errors.New("not a bind result")
+		return
 	}
 	var jid JID
 	ParseJID(ib.JID, &jid)
 	cbf.rb.BindResource(part, jid.Resource)
-	return nil
+	return
 }

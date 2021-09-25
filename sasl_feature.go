@@ -32,7 +32,7 @@ func AuthPayload(encoded string, payload *string) error {
 
 func SaslFailureElem(tagName, desc string) stravaganza.Element {
 	var elem stravaganza.Element
-	Failure{Xmlns: nsSASL, MoreLang: "en", DescTag: tagName, More: desc}.ToElem(&elem)
+	Failure{Xmlns: NSSasl, MoreLang: "en", DescTag: tagName, More: desc}.ToElem(&elem)
 	return elem
 }
 
@@ -73,7 +73,7 @@ func SaslFailureElemFromError(err error) stravaganza.Element {
 }
 
 const (
-	nsSASL = "urn:ietf:params:xml:ns:xmpp-sasl"
+	NSSasl = "urn:ietf:params:xml:ns:xmpp-sasl"
 
 	SM_EXTERNAL           = "EXTERNAL"           // where authentication is implicit in the context (e.g., for protocols already using IPsec or TLS)
 	SM_ANONYMOUS          = "ANONYMOUS"          // for unauthenticated guest access
@@ -108,50 +108,48 @@ const (
 	SFTemporaryAuthFailure = "temporary-auth-failure"
 )
 
-type SASLFeature struct {
+type saslFeature struct {
 	supported  map[string]Auth
 	authorized Authorized
 	handled    bool
-	*IDAble
+	IDAble
 }
 
-func NewSASLFeature(authorized Authorized) *SASLFeature {
-	mf := new(SASLFeature)
-	mf.supported = make(map[string]Auth)
-	mf.authorized = authorized
-	mf.IDAble = NewIDAble()
-	return mf
+func SASLFeature(authorized Authorized) saslFeature {
+	return saslFeature{supported: make(map[string]Auth), authorized: authorized, IDAble: CreateIDAble()}
 }
 
-func (mf *SASLFeature) Mandatory() bool {
+func (mf saslFeature) Mandatory() bool {
 	return true
 }
 
-func (mf *SASLFeature) Elem() stravaganza.Element {
+func (mf saslFeature) Elem() stravaganza.Element {
 	ms := []stravaganza.Element{}
 	for name := range mf.supported {
 		ms = append(ms, stravaganza.NewBuilder("mechanism").WithText(name).Build())
 	}
 	return stravaganza.NewBuilder("mechanisms").
-		WithAttribute("xmlns", nsSASL).
+		WithAttribute("xmlns", NSSasl).
 		WithChildren(ms...).Build()
 }
 
-func (mf *SASLFeature) Support(name string, auth Auth) *SASLFeature {
+func (mf *saslFeature) Support(name string, auth Auth) {
 	mf.supported[name] = auth
-	return mf
 }
 
-func (mf *SASLFeature) Unsupport(name string) *SASLFeature {
+func (mf *saslFeature) Unsupport(name string) {
 	delete(mf.supported, name)
-	return mf
 }
 
-func (mf *SASLFeature) Match(elem stravaganza.Element) bool {
-	return elem.Name() == "auth" && elem.Attribute("xmlns") == nsSASL
+func (mf saslFeature) Match(elem stravaganza.Element) bool {
+	return elem.Name() == "auth" && elem.Attribute("xmlns") == NSSasl
 }
 
-func (mf *SASLFeature) Handle(elem stravaganza.Element, part Part) error {
+func (mf *saslFeature) Handle(elem stravaganza.Element, part Part) (catched bool, err error) {
+	if !mf.Match(elem) {
+		return false, nil
+	}
+	catched = true
 	mf.handled = true
 	as := elem.Text()
 	mech := elem.Attribute("mechanism")
@@ -163,19 +161,20 @@ func (mf *SASLFeature) Handle(elem stravaganza.Element, part Part) error {
 		}
 		desc := fmt.Sprintf("only support [%s] in this server, client preffers [%s]", strings.Join(supported, ","), mech)
 		part.Channel().SendElement(SaslFailureElem(SFInvalidMechanism, desc))
-		return SaslFailureError(SFInvalidMechanism, desc)
+		err = SaslFailureError(SFInvalidMechanism, desc)
+		return
 	}
 	username, err := auth.Auth(mech, as, part)
 	if err != nil {
 		part.Channel().SendElement(SaslFailureElemFromError(err))
-		return err
+		return
 	}
 	part.Attr().JID.Username = username
 	part.Attr().JID.Domain = part.Attr().Domain
 	mf.authorized.Authorized(part.Attr().JID.String(), part)
-	return nil
+	return
 }
 
-func (mf *SASLFeature) Handled() bool {
+func (mf saslFeature) Handled() bool {
 	return mf.handled
 }

@@ -64,7 +64,7 @@ func (scram *ScramAuth) Auth(mechanism, authInfo string, part Part) (username st
 		return "", err
 	}
 	msg := stravaganza.NewBuilder("challenge").
-		WithAttribute(stravaganza.Namespace, nsSASL).
+		WithAttribute(stravaganza.Namespace, NSSasl).
 		WithText(buf.String()).
 		Build()
 	if err = part.Channel().SendElement(msg); err != nil {
@@ -118,7 +118,7 @@ func (scram *ScramAuth) verifyPassword(auth *scramauth.ServerScramAuth, part Par
 		return SaslFailureError(SFTemporaryAuthFailure, err.Error())
 	}
 	return part.Channel().SendElement(stravaganza.NewBuilder("success").
-		WithAttribute(stravaganza.Namespace, nsSASL).
+		WithAttribute(stravaganza.Namespace, NSSasl).
 		WithText(buf.String()).
 		Build())
 }

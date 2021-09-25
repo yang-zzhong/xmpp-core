@@ -183,7 +183,7 @@ func (xc *XChannel) Close() {
 	}
 	if err := xc.SendToken(token); err != nil {
 		if xc.logger != nil {
-			xc.logger.Printf(Error, "send close stream token error: %s", err.Error())
+			xc.logger.Printf(LogError, "send close stream token error: %s", err.Error())
 		}
 	}
 	xc.state = stateClosed
@@ -234,7 +234,7 @@ func (gs *XChannel) logOther(rs, other interface{}) {
 	} else {
 		tmp = "client [%d] " + tmp
 	}
-	gs.logger.Printf(Debug, tmp, gs.state, rs, other)
+	gs.logger.Printf(LogDebug, tmp, gs.state, rs, other)
 }
 
 func (gs *XChannel) SendToken(token xml.Token) error {
@@ -266,7 +266,7 @@ func (gs *XChannel) logElement(leading string, elem stravaganza.Element) {
 	} else {
 		tmp = "client [%d] " + tmp
 	}
-	gs.logger.Printf(Debug, tmp, gs.state, elem.GoString())
+	gs.logger.Printf(LogDebug, tmp, gs.state, elem.GoString())
 }
 
 func (gs *XChannel) logToken(leading string, token xml.Token) {
@@ -279,7 +279,7 @@ func (gs *XChannel) logToken(leading string, token xml.Token) {
 	} else {
 		tmp = "client [%d] " + tmp
 	}
-	gs.logger.Printf(Debug, tmp, gs.state)
+	gs.logger.Printf(LogDebug, tmp, gs.state)
 	encoder := xml.NewEncoder(gs.logger.Writer())
 	encoder.EncodeToken(token)
 	encoder.Flush()

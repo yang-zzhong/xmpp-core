@@ -99,7 +99,7 @@ func (sta *ScramToAuth) sendResponse(auth *scramauth.ClientScramAuth, r io.Reade
 		return err
 	}
 	elem := stravaganza.NewBuilder("response").
-		WithAttribute("xmlns", nsSASL).
+		WithAttribute("xmlns", NSSasl).
 		WithText(wr.String()).Build()
 
 	return part.Channel().SendElement(elem)
@@ -123,6 +123,6 @@ func (sta *ScramToAuth) sendRequest(auth *scramauth.ClientScramAuth, part Part) 
 	}
 	elem := stravaganza.NewBuilder("auth").
 		WithAttribute("mechanism", sta.mechanism).
-		WithAttribute("xmlns", nsSASL).WithText(buf.String()).Build()
+		WithAttribute("xmlns", NSSasl).WithText(buf.String()).Build()
 	return part.Channel().SendElement(elem)
 }

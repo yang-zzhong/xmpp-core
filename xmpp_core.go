@@ -25,19 +25,18 @@ type Feature interface {
 
 type ElemHandler interface {
 	ID() string
-	Match(stravaganza.Element) bool
-	Handle(elem stravaganza.Element, part Part) error
+	Handle(elem stravaganza.Element, part Part) (catched bool, err error)
 }
 
 type IDAble struct {
 	id string
 }
 
-func NewIDAble() *IDAble {
-	return &IDAble{id: uuid.New().String()}
+func CreateIDAble() IDAble {
+	return IDAble{id: uuid.New().String()}
 }
 
-func (idable *IDAble) ID() string {
+func (idable IDAble) ID() string {
 	return idable.id
 }
 
@@ -54,7 +53,7 @@ type Part interface {
 	OnWhiteSpace([]byte)
 }
 
-type ElemRunner struct {
+type elemRunner struct {
 	channel      Channel
 	elemHandlers []ElemHandler
 	handleLimit  int
@@ -62,8 +61,8 @@ type ElemRunner struct {
 	quit         bool
 }
 
-func NewElemRunner(channel Channel) *ElemRunner {
-	return &ElemRunner{
+func ElemRunner(channel Channel) elemRunner {
+	return elemRunner{
 		channel:      channel,
 		handleLimit:  -1,
 		handled:      0,
@@ -72,7 +71,7 @@ func NewElemRunner(channel Channel) *ElemRunner {
 	}
 }
 
-func (er *ElemRunner) WithElemHandler(handler ElemHandler) {
+func (er *elemRunner) WithElemHandler(handler ElemHandler) {
 	for _, h := range er.elemHandlers {
 		if h.ID() == handler.ID() {
 			return
@@ -81,20 +80,20 @@ func (er *ElemRunner) WithElemHandler(handler ElemHandler) {
 	er.elemHandlers = append(er.elemHandlers, handler)
 }
 
-func (er *ElemRunner) Running() bool {
+func (er elemRunner) Running() bool {
 	return !er.quit
 }
 
-func (er *ElemRunner) SetHandleLimit(limit int) {
+func (er elemRunner) SetHandleLimit(limit int) {
 	er.handleLimit = limit
 }
 
-func (er *ElemRunner) Quit() {
+func (er *elemRunner) Quit() {
 	er.quit = true
 	er.channel.Close()
 }
 
-func (er *ElemRunner) Run(part Part) chan error {
+func (er *elemRunner) Run(part Part) chan error {
 	errChan := make(chan error)
 	go func() {
 		i := 0
@@ -104,10 +103,10 @@ func (er *ElemRunner) Run(part Part) chan error {
 			if err != nil {
 				if er.quit {
 					errChan <- nil
-					part.Logger().Printf(Info, "quit!")
+					part.Logger().Printf(LogInfo, "quit!")
 					return
 				}
-				part.Logger().Printf(Error, "a error from part instance [%s] message handler: %s", part.ID(), err.Error())
+				part.Logger().Printf(LogError, "a error from part instance [%s] message handler: %s", part.ID(), err.Error())
 				errChan <- err
 				return
 			}
@@ -123,12 +122,11 @@ func (er *ElemRunner) Run(part Part) chan error {
 				part.OnCloseToken()
 			case stravaganza.Element:
 				for _, handler := range er.elemHandlers {
-					if handler.Match(t) {
+					if cached, err := handler.Handle(t, part); cached {
 						er.handled = er.handled + 1
-						if err := handler.Handle(t, part); err != nil {
-							part.Logger().Printf(Error, "a error occured from part instance [%s] message handler: %s", part.ID(), err.Error())
-							errChan <- err
-						}
+					} else if err != nil {
+						part.Logger().Printf(LogError, "a error occured from part instance [%s] message handler: %s", part.ID(), err.Error())
+						errChan <- err
 					}
 				}
 				if er.handleLimit > 0 && er.handled >= er.handleLimit {
@@ -256,7 +254,7 @@ type XPart struct {
 	logger   Logger
 	conn     Conn
 	attr     PartAttr
-	*ElemRunner
+	elemRunner
 }
 
 func NewXPart(conn Conn, domain string, logger Logger) *XPart {
@@ -267,7 +265,7 @@ func NewXPart(conn Conn, domain string, logger Logger) *XPart {
 		logger:     logger,
 		conn:       conn,
 		attr:       PartAttr{Domain: domain, ID: uuid.New().String()},
-		ElemRunner: NewElemRunner(channel),
+		elemRunner: ElemRunner(channel),
 	}
 }
 
@@ -288,8 +286,8 @@ func (part *XPart) WithFeature(f Feature) {
 }
 
 func (part *XPart) Run() chan error {
-	part.logger.Printf(Info, "part instance [%s] start running", part.attr.ID)
-	return part.ElemRunner.Run(part)
+	part.logger.Printf(LogInfo, "part instance [%s] start running", part.attr.ID)
+	return part.elemRunner.Run(part)
 }
 
 func (part *XPart) Attr() *PartAttr {
@@ -353,7 +351,7 @@ func (part *XPart) handleFeatures(header xml.StartElement) error {
 			return part.handleUnmandatoryFeatures(features)
 		}
 		elems := []stravaganza.Element{}
-		runner := NewElemRunner(part.Channel())
+		runner := ElemRunner(part.Channel())
 		runner.SetHandleLimit(1)
 		for _, f := range features {
 			runner.WithElemHandler(f)
