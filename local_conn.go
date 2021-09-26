@@ -3,11 +3,13 @@ package xmppcore
 import (
 	"bytes"
 	"crypto/tls"
-	"github.com/google/uuid"
+	"fmt"
 	"io"
 	"net"
 	"os"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type LocalConnAddr struct {
@@ -67,7 +69,7 @@ func (lc *LocalConn) Read(b []byte) (n int, err error) {
 		c := copy(b, <-lc.comming)
 		return c, nil
 	}
-	du := lc.readDeadline.Sub(time.Now())
+	du := time.Until(lc.readDeadline)
 	to := make(chan bool)
 	timer := time.AfterFunc(du, func() {
 		to <- true
@@ -82,7 +84,7 @@ func (lc *LocalConn) Read(b []byte) (n int, err error) {
 }
 
 func (lc *LocalConn) Write(b []byte) (n int, err error) {
-	du := lc.readDeadline.Sub(time.Now())
+	du := time.Until(lc.writeDeadline)
 	to := make(chan bool)
 	timer := time.AfterFunc(du, func() {
 		to <- true
@@ -99,7 +101,7 @@ func (lc *LocalConn) Write(b []byte) (n int, err error) {
 func (lc *LocalConn) Close() error {
 	defer func() {
 		if e := recover(); e != nil {
-			// already closed
+			fmt.Printf("Warning: channel already closed\n")
 		}
 	}()
 	close(lc.comming)

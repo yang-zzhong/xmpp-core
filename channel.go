@@ -38,8 +38,8 @@ type Channel interface {
 }
 
 const (
-	nsStream  = "http://etherx.jabber.org/streams"
-	nsFraming = "urn:ietf:params:xml:ns:xmpp-framing"
+	NSStream  = "http://etherx.jabber.org/streams"
+	NSFraming = "urn:ietf:params:xml:ns:xmpp-framing"
 
 	stateInit      = 0
 	stateWSOpened  = 1
@@ -175,9 +175,9 @@ func (xc *XChannel) Close() {
 		xc.conn.Close()
 		return
 	case stateWSOpened:
-		token = xml.EndElement{Name: xml.Name{Local: "open", Space: nsFraming}}
+		token = xml.EndElement{Name: xml.Name{Local: "open", Space: NSFraming}}
 	case stateTCPOpened:
-		token = xml.EndElement{Name: xml.Name{Local: "stream", Space: nsStream}}
+		token = xml.EndElement{Name: xml.Name{Local: "stream", Space: NSStream}}
 	case stateClosed:
 		return
 	}

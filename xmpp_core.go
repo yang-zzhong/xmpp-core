@@ -84,7 +84,7 @@ func (er elemRunner) Running() bool {
 	return !er.quit
 }
 
-func (er elemRunner) SetHandleLimit(limit int) {
+func (er *elemRunner) SetHandleLimit(limit int) {
 	er.handleLimit = limit
 }
 
@@ -122,7 +122,7 @@ func (er *elemRunner) Run(part Part) chan error {
 				part.OnCloseToken()
 			case stravaganza.Element:
 				for _, handler := range er.elemHandlers {
-					if cached, err := handler.Handle(t, part); cached {
+					if catched, err := handler.Handle(t, part); catched {
 						er.handled = er.handled + 1
 					} else if err != nil {
 						part.Logger().Printf(LogError, "a error occured from part instance [%s] message handler: %s", part.ID(), err.Error())
@@ -185,18 +185,18 @@ func (attr *PartAttr) head(elem *xml.StartElement, from, to string) {
 	// }
 	if !attr.OpenTag {
 		*elem = xml.StartElement{
-			Name: xml.Name{Space: nsStream, Local: "stream"},
+			Name: xml.Name{Space: NSStream, Local: "stream"},
 			Attr: eattr}
 		return
 	}
 	*elem = xml.StartElement{
-		Name: xml.Name{Space: nsFraming, Local: "open"},
+		Name: xml.Name{Space: NSFraming, Local: "open"},
 		Attr: eattr}
 }
 
 func (sa *PartAttr) ParseToServer(elem xml.StartElement) error {
-	isStream := elem.Name.Local == "stream" && elem.Name.Space == nsStream
-	sa.OpenTag = elem.Name.Local == "open" && elem.Name.Space == nsFraming
+	isStream := elem.Name.Local == "stream" && elem.Name.Space == NSStream
+	sa.OpenTag = elem.Name.Local == "open" && elem.Name.Space == NSFraming
 	if !isStream && !sa.OpenTag {
 		return ErrNotHeaderStart
 	}
@@ -223,8 +223,8 @@ func (sa *PartAttr) ParseToServer(elem xml.StartElement) error {
 }
 
 func (sa *PartAttr) ParseToClient(elem xml.StartElement) error {
-	isStream := elem.Name.Local == "stream" && elem.Name.Space == nsStream
-	sa.OpenTag = elem.Name.Local == "open" && elem.Name.Space == nsFraming
+	isStream := elem.Name.Local == "stream" && elem.Name.Space == NSStream
+	sa.OpenTag = elem.Name.Local == "open" && elem.Name.Space == NSFraming
 	if !isStream && !sa.OpenTag {
 		return ErrNotHeaderStart
 	}
