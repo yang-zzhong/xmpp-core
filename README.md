@@ -8,7 +8,7 @@ cate: tools
 
 ## Overview
 
-A xmpp framework that supports totally configuration and extensions. you shall impelementation your feature and whatever extensions like rfc6121, with `Part::WithElemHandler` and `Part::WithFeature`
+A xmpp framework that supports totally configuration and extensions. you shall impelement your feature and whatever extensions like rfc6121, with `Part::WithElemHandler` and `Part::WithFeature`
 
 * insert your feature with `Part::WithFeature`
 * register element handler with `Part::WithElemHandler`
